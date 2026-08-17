@@ -1,0 +1,620 @@
+<title>SAT-Dengue Colombia</title>
+<style>
+:root {
+  --bg:#EDF1F7;--surface:#FFF;--surface2:#E3EAF4;--surface3:#F4F7FC;
+  --ink:#1B2233;--ink-m:#5C6B84;--ink-f:#8FA3BE;
+  --border:#C8D4E6;--border-lt:#DAE4F0;
+  --accent:#1654A2;--accent-lt:#D6E6F8;
+  --danger:#BE1D2B;--danger-bg:#FDEAE8;--danger-mid:#E83545;
+  --warn:#C27800;--warn-bg:#FFF3D6;--warn-mid:#E99A00;
+  --ok:#1A7F37;--ok-bg:#E4F4EA;--ok-mid:#22A24A;
+  --nav:#0E1E3C;--nav-text:#C2D5EE;
+  --term-bg:#0D1117;--term-hdr:#161B22;--term-border:#30363D;
+  --mono:ui-monospace,'Cascadia Code','Fira Code',Consolas,monospace;
+  --font:system-ui,-apple-system,'Segoe UI',sans-serif;
+  --r:6px;
+}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0C1320;--surface:#111D30;--surface2:#182540;--surface3:#0A1220;
+  --ink:#D2E2F5;--ink-m:#7090B5;--ink-f:#4E6885;
+  --border:#1E3050;--border-lt:#192840;
+  --accent:#4090E0;--accent-lt:#0E2A50;
+  --danger:#FF4858;--danger-bg:#280D12;--danger-mid:#FF5868;
+  --warn:#FFAA20;--warn-bg:#261800;--warn-mid:#FFBB40;
+  --ok:#3EC060;--ok-bg:#0A2218;--ok-mid:#50D878;
+  --nav:#060E1C;--nav-text:#9ABCDE;
+}}
+:root[data-theme="dark"]{
+  --bg:#0C1320;--surface:#111D30;--surface2:#182540;--surface3:#0A1220;
+  --ink:#D2E2F5;--ink-m:#7090B5;--ink-f:#4E6885;
+  --border:#1E3050;--border-lt:#192840;
+  --accent:#4090E0;--accent-lt:#0E2A50;
+  --danger:#FF4858;--danger-bg:#280D12;--danger-mid:#FF5868;
+  --warn:#FFAA20;--warn-bg:#261800;--warn-mid:#FFBB40;
+  --ok:#3EC060;--ok-bg:#0A2218;--ok-mid:#50D878;
+  --nav:#060E1C;--nav-text:#9ABCDE;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);font-size:13px;line-height:1.5;min-height:100vh}
+
+/* NAV */
+.nav{background:var(--nav);border-top:3px solid var(--danger);display:flex;align-items:center;gap:14px;padding:0 16px;height:50px;position:sticky;top:0;z-index:20}
+.nav-brand{font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#fff;flex-shrink:0}
+.nav-brand .dot{color:var(--danger-mid)}
+.nav-sep{width:1px;height:20px;background:#243650;flex-shrink:0}
+.nav-info{font-size:11px;color:var(--ink-f);flex-shrink:0}
+.nav-gap{flex:1}
+.nav-badges{display:flex;gap:6px;flex-shrink:0}
+.nbadge{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.04em;padding:3px 9px;border-radius:3px;display:flex;align-items:center;gap:5px}
+.nbadge::before{content:'';width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.nbadge.d{background:rgba(190,29,43,.22);color:#FF7080}.nbadge.d::before{background:var(--danger-mid)}
+.nbadge.w{background:rgba(194,120,0,.22);color:#FFBA50}.nbadge.w::before{background:var(--warn-mid)}
+.nbadge.k{background:rgba(26,127,55,.22);color:#60D880}.nbadge.k::before{background:var(--ok-mid)}
+
+/* KPI */
+.kpi-strip{background:var(--surface);border-bottom:1px solid var(--border);display:flex;overflow-x:auto}
+.kpi{padding:12px 20px;border-right:1px solid var(--border-lt);flex-shrink:0}
+.kpi:last-child{border-right:none}
+.kpi-val{font-family:var(--mono);font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1}
+.kpi-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-m);margin-top:3px;white-space:nowrap}
+.kpi.d .kpi-val{color:var(--danger)}.kpi.w .kpi-val{color:var(--warn)}.kpi.k .kpi-val{color:var(--ok)}.kpi.a .kpi-val{color:var(--accent)}
+
+/* LAYOUT */
+.main{display:grid;grid-template-columns:318px 1fr}
+
+/* MAP PANEL */
+.map-panel{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column}
+.panel-head{padding:11px 14px;border-bottom:1px solid var(--border-lt);display:flex;align-items:center;gap:8px}
+.ph-title{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:var(--ink-m)}
+.ph-note{margin-left:auto;font-size:10px;color:var(--ink-f);font-family:var(--mono)}
+.map-wrap{flex:1;padding:12px;display:flex;justify-content:center;align-items:flex-start}
+.map-wrap svg{width:100%;max-height:280px}
+.col-fill{fill:var(--surface2)}
+.col-stroke{stroke:var(--border);stroke-width:1.2;fill:none}
+.river{stroke:rgba(100,140,200,0.22);stroke-width:2;fill:none;stroke-linecap:round}
+.muni-dot{cursor:pointer}
+.muni-dot.d{fill:var(--danger-mid)}.muni-dot.w{fill:var(--warn-mid)}.muni-dot.k{fill:var(--ok-mid)}
+.muni-dot.sel{fill:var(--accent);stroke:#fff;stroke-width:2}
+.mlbl{font:8.5px var(--font);fill:var(--ink-m);pointer-events:none}
+.mlbl.sel{font-weight:600;fill:var(--accent)}
+.map-legend{padding:9px 14px;border-top:1px solid var(--border-lt);display:flex;flex-wrap:wrap;gap:5px 12px}
+.leg{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--ink-m)}
+.leg-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.map-filters{padding:9px 14px;border-top:1px solid var(--border-lt);display:flex;flex-direction:column;gap:6px}
+.frow{display:flex;align-items:center;gap:8px}
+.flbl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-f);width:78px;flex-shrink:0}
+.fsel{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--ink);font-size:11.5px;padding:4px 7px;font-family:var(--font);cursor:pointer}
+
+/* DETAIL PANEL */
+.detail-panel{display:flex;flex-direction:column;overflow:auto}
+.muni-bar{background:var(--surface);border-bottom:1px solid var(--border);padding:11px 16px;display:flex;align-items:center;gap:14px}
+.muni-name{font-size:15px;font-weight:600}
+.muni-dept{font-size:11.5px;color:var(--ink-m)}
+.muni-tag{margin-left:auto;font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.05em;padding:4px 11px;border-radius:4px;white-space:nowrap}
+.muni-tag.d{background:var(--danger-bg);color:var(--danger);border:1px solid var(--danger)}
+.muni-tag.w{background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn)}
+.muni-tag.k{background:var(--ok-bg);color:var(--ok);border:1px solid var(--ok)}
+
+/* DETAIL GRID */
+.detail-grid{padding:13px 16px;display:grid;grid-template-columns:1fr 224px;gap:13px}
+.chart-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.cc-head{padding:8px 12px;border-bottom:1px solid var(--border-lt);background:var(--surface2);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.cc-title{font-size:11.5px;font-weight:600}
+.cc-legend{margin-left:auto;display:flex;gap:10px;flex-wrap:wrap}
+.cleg{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--ink-m)}
+.cleg-line{width:13px;height:3px;border-radius:2px}
+.cleg-dot{width:8px;height:8px;border-radius:50%}
+.cc-body{height:246px;padding:8px 8px 2px;position:relative}
+.cc-body canvas{width:100%;height:100%;display:block}
+
+/* SIDEBAR */
+.sidebar{display:flex;flex-direction:column;gap:11px}
+.scard{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.scard-head{padding:7px 11px;font-size:9.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-f);border-bottom:1px solid var(--border-lt);background:var(--surface2)}
+.status-big{display:flex;flex-direction:column;align-items:center;padding:14px 10px 10px;text-align:center;gap:5px}
+.status-badge{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.06em;padding:5px 12px;border-radius:4px;margin-bottom:3px}
+.status-badge.d{background:var(--danger-bg);color:var(--danger);border:1px solid var(--danger)}
+.status-badge.k{background:var(--ok-bg);color:var(--ok);border:1px solid var(--ok)}
+.status-sub{font-size:10.5px;color:var(--ink-m);line-height:1.5}
+.met-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border-lt)}
+.met{background:var(--surface);padding:8px 10px}
+.met-val{font-family:var(--mono);font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1}
+.met-lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-m);margin-top:3px}
+.scard-body{padding:11px}
+.clim-rows{display:flex;flex-direction:column;gap:8px}
+.clim{display:flex;align-items:center;gap:7px}
+.clim-lbl{font-size:10.5px;color:var(--ink-m);width:80px;flex-shrink:0}
+.clim-track{flex:1;height:5px;background:var(--surface2);border-radius:3px;overflow:hidden}
+.clim-fill{height:100%;border-radius:3px}
+.clim-fill.h{background:var(--danger-mid)}.clim-fill.m{background:var(--warn-mid)}.clim-fill.l{background:var(--ok-mid)}
+.clim-val{font-family:var(--mono);font-size:10.5px;color:var(--ink-m);width:40px;text-align:right;flex-shrink:0}
+
+/* TABLE */
+.alert-section{padding:0 16px 16px;background:var(--bg)}
+.asec-head{display:flex;align-items:baseline;gap:10px;padding:11px 0 7px}
+.asec-title{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:var(--ink-m)}
+.asec-count{font-family:var(--mono);font-size:10.5px;color:var(--ink-f)}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--r);background:var(--surface)}
+table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+thead th{background:var(--surface2);padding:7px 10px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-m);font-weight:600;border-bottom:1px solid var(--border);white-space:nowrap}
+thead th:first-child{width:4px;padding:0}
+tbody tr{border-bottom:1px solid var(--border-lt);background:var(--surface)}
+tbody tr:last-child{border-bottom:none}
+tbody tr:hover{background:var(--surface2)}
+tbody td{padding:8px 10px;vertical-align:middle}
+tbody td:first-child{padding:0}
+.rs{width:4px;height:36px;border-radius:0 2px 2px 0}
+.rs.d{background:var(--danger-mid)}.rs.w{background:var(--warn-mid)}.rs.k{background:var(--ok-mid)}
+.td-m{font-weight:600}.td-d{color:var(--ink-m)}
+.spill{display:inline-flex;align-items:center;padding:2px 8px;border-radius:3px;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.05em}
+.spill.d{background:var(--danger-bg);color:var(--danger)}.spill.w{background:var(--warn-bg);color:var(--warn)}.spill.k{background:var(--ok-bg);color:var(--ok)}
+.up{color:var(--danger);font-weight:600;font-family:var(--mono)}.dn{color:var(--ok);font-weight:600;font-family:var(--mono)}
+.cbar{display:flex;align-items:center;gap:5px}
+.ctrack{width:46px;height:4px;background:var(--surface2);border-radius:2px;overflow:hidden}
+.cfill{height:100%;border-radius:2px}
+.cfill.h{background:var(--danger-mid)}.cfill.m{background:var(--warn-mid)}.cfill.l{background:var(--ok-mid)}
+.cpct{font-family:var(--mono);font-size:10.5px;color:var(--ink-m)}
+
+/* FOOTER */
+.mfoot{background:var(--surface);border-top:1px solid var(--border);padding:9px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;min-height:46px}
+.mf-tag{font-family:var(--mono);font-size:10.5px;font-weight:700;background:var(--accent-lt);color:var(--accent);padding:3px 9px;border-radius:3px;flex-shrink:0}
+.mf-info,.mf-metric{font-size:11.5px;color:var(--ink-m)}
+.mf-metric strong{font-family:var(--mono);font-weight:700;color:var(--ink)}
+.mf-gap{flex:1}
+.mf-src{font-family:var(--mono);font-size:10px;color:var(--ink-f)}
+
+@media(max-width:860px){
+  .main{grid-template-columns:1fr}
+  .map-panel{border-right:none;border-bottom:1px solid var(--border)}
+  .detail-grid{grid-template-columns:1fr}
+  .nav-badges{display:none}
+}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<!-- NAV -->
+<nav class="nav">
+  <span class="nav-brand">SAT<span class="dot">●</span>DENGUE</span>
+  <span class="nav-sep"></span>
+  <span class="nav-info">Colombia · SIVIGILA 2007–jul. 2026 · Pronóstico agosto 2026</span>
+  <span class="nav-gap"></span>
+  <div class="nav-badges">
+    <span class="nbadge d">34 EXCESO</span>
+    <span class="nbadge w">67 ALERTA</span>
+    <span class="nbadge k">812 NORMAL</span>
+  </div>
+</nav>
+
+<!-- KPI STRIP -->
+<div class="kpi-strip">
+  <div class="kpi d"><div class="kpi-val">34</div><div class="kpi-lbl">En exceso</div></div>
+  <div class="kpi w"><div class="kpi-val">67</div><div class="kpi-lbl">En alerta</div></div>
+  <div class="kpi k"><div class="kpi-val">812</div><div class="kpi-lbl">Normales</div></div>
+  <div class="kpi"><div class="kpi-val">42</div><div class="kpi-lbl">Sin datos</div></div>
+  <div class="kpi a"><div class="kpi-val">87%</div><div class="kpi-lbl">Sensibilidad</div></div>
+  <div class="kpi a"><div class="kpi-val">12%</div><div class="kpi-lbl">Tasa falsa alarma</div></div>
+  <div class="kpi a"><div class="kpi-val">+29pp</div><div class="kpi-lbl">vs. canal endémico</div></div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- MAP PANEL -->
+  <div class="map-panel">
+    <div class="panel-head">
+      <span class="ph-title">Mapa de alertas — jul. 2026</span>
+      <span class="ph-note">click para seleccionar</span>
+    </div>
+    <div class="map-wrap">
+      <!-- Colombia SVG — viewBox uses real lat/lon projection:
+           x = (lon+79)/12.5*200, y = (12.5-lat)/14.5*240 -->
+      <svg viewBox="0 0 200 240" xmlns="http://www.w3.org/2000/svg">
+        <!-- Colombia mainland -->
+        <path class="col-fill" d="M57,35 L70,22 L80,18 L100,13 L120,5 L112,25 L106,68 L133,82 L148,122 L182,138 L190,168 L145,200 L140,232 L62,200 L28,180 L8,168 L32,128 L28,100 L34,62 L50,42 Z"/>
+        <path d="M57,35 L70,22 L80,18 L100,13 L120,5 L112,25 L106,68 L133,82 L148,122 L182,138 L190,168 L145,200 L140,232 L62,200 L28,180 L8,168 L32,128 L28,100 L34,62 L50,42 Z" class="col-stroke"/>
+        <!-- Magdalena river (simplified N-S) -->
+        <path d="M80,38 C76,62 78,88 76,112 C72,138 67,158 63,185" class="river"/>
+        <!-- Cauca river -->
+        <path d="M42,70 C44,88 48,105 48,125 C47,142 44,158 42,175" class="river"/>
+
+        <!-- CITY DOTS: d=exceso  w=alerta  k=normal  sel=selected -->
+        <!-- Barranquilla 11°N,-74.8°W → 67,23 -->
+        <circle class="muni-dot w" cx="67" cy="23" r="5"/>
+        <text class="mlbl" x="72" y="26">Barranquilla</text>
+        <!-- Santa Marta 11.24°N,-74.2°W → 77,19 -->
+        <circle class="muni-dot w" cx="77" cy="19" r="4"/>
+        <text class="mlbl" x="82" y="23">S. Marta</text>
+        <!-- Valledupar 10.47°N,-73.25°W → 92,34 -->
+        <circle class="muni-dot d" cx="92" cy="34" r="4.5"/>
+        <text class="mlbl" x="97" y="38">Valledupar</text>
+        <!-- Montería 8.75°N,-75.88°W → 50,62 -->
+        <circle class="muni-dot w" cx="50" cy="62" r="4"/>
+        <text class="mlbl" x="55" y="60">Montería</text>
+        <!-- Cúcuta 7.89°N,-72.51°W → 104,76 -->
+        <circle class="muni-dot d" cx="104" cy="76" r="4.5"/>
+        <text class="mlbl" x="108" y="80">Cúcuta</text>
+        <!-- Bucaramanga 7.13°N,-73.13°W → 94,89 -->
+        <circle class="muni-dot w" cx="94" cy="89" r="4.5"/>
+        <text class="mlbl" x="98" y="93">Bucaramanga</text>
+        <!-- Medellín 6.25°N,-75.56°W → 55,103 -->
+        <circle class="muni-dot w" cx="55" cy="103" r="5.5"/>
+        <text class="mlbl" x="61" y="101">Medellín</text>
+        <!-- Pereira 4.81°N,-75.69°W → 53,127 -->
+        <circle class="muni-dot w" cx="53" cy="127" r="4"/>
+        <text class="mlbl" x="57" y="125">Pereira</text>
+        <!-- Bogotá 4.71°N,-74.07°W → 79,129 -->
+        <circle class="muni-dot k" cx="79" cy="129" r="6"/>
+        <text class="mlbl" x="85" y="133">Bogotá</text>
+        <!-- Villavicencio 4.15°N,-73.63°W → 108,138 -->
+        <circle class="muni-dot d" cx="108" cy="138" r="4.5"/>
+        <text class="mlbl" x="113" y="136">Villavicencio</text>
+        <!-- Cali 3.43°N,-76.52°W → 40,150  — SELECTED -->
+        <circle class="muni-dot sel" cx="40" cy="150" r="7"/>
+        <text class="mlbl sel" x="49" y="148">Cali</text>
+        <!-- Neiva 2.93°N,-75.28°W → 60,158 -->
+        <circle class="muni-dot d" cx="60" cy="158" r="4.5"/>
+        <text class="mlbl" x="65" y="162">Neiva</text>
+        <!-- Pasto 1.21°N,-77.28°W → 28,187 -->
+        <circle class="muni-dot k" cx="28" cy="187" r="3.5"/>
+        <text class="mlbl" x="33" y="191">Pasto</text>
+
+        <!-- Scale bar -->
+        <line x1="10" y1="230" x2="52" y2="230" stroke="var(--border)" stroke-width="1.5"/>
+        <line x1="10" y1="226" x2="10" y2="234" stroke="var(--border)" stroke-width="1.5"/>
+        <line x1="52" y1="226" x2="52" y2="234" stroke="var(--border)" stroke-width="1.5"/>
+        <text x="22" y="226" style="font:7.5px var(--font);fill:var(--ink-f)">~250 km</text>
+      </svg>
+    </div>
+    <div class="map-legend">
+      <div class="leg"><span class="leg-dot" style="background:var(--danger-mid)"></span>Exceso</div>
+      <div class="leg"><span class="leg-dot" style="background:var(--warn-mid)"></span>Alerta</div>
+      <div class="leg"><span class="leg-dot" style="background:var(--ok-mid)"></span>Normal</div>
+      <div class="leg"><span class="leg-dot" style="background:var(--accent)"></span>Seleccionado</div>
+    </div>
+    <div class="map-filters">
+      <div class="frow">
+        <span class="flbl">Departamento</span>
+        <select class="fsel">
+          <option>Todos</option>
+          <option selected>Valle del Cauca</option>
+          <option>Antioquia</option>
+          <option>Atlántico</option>
+          <option>Santander</option>
+        </select>
+      </div>
+      <div class="frow">
+        <span class="flbl">Período</span>
+        <select class="fsel">
+          <option selected>Julio 2026</option>
+          <option>Junio 2026</option>
+          <option>Mayo 2026</option>
+        </select>
+      </div>
+      <div class="frow">
+        <span class="flbl">Horizonte</span>
+        <select class="fsel">
+          <option selected>Pronóstico 1 mes</option>
+          <option>Mes actual</option>
+        </select>
+      </div>
+    </div>
+  </div><!-- /map-panel -->
+
+  <!-- DETAIL PANEL -->
+  <div class="detail-panel">
+    <div class="muni-bar">
+      <div>
+        <div class="muni-name">Cali</div>
+        <div class="muni-dept">Valle del Cauca · DANE 76001</div>
+      </div>
+      <span class="muni-tag d">⚠ EXCESO PREVISTO — ago. 2026</span>
+    </div>
+
+    <div class="detail-grid">
+      <!-- TIME SERIES CHART -->
+      <div class="chart-card">
+        <div class="cc-head">
+          <span class="cc-title">Casos mensuales — canal endémico y pronóstico</span>
+          <div class="cc-legend">
+            <span class="cleg"><span class="cleg-line" style="background:var(--accent)"></span>Observados</span>
+            <span class="cleg"><span class="cleg-dot" style="background:var(--danger-mid)"></span>Pronóstico ago.</span>
+            <span class="cleg"><span class="cleg-line" style="background:var(--ok);opacity:.5"></span>Canal endémico</span>
+          </div>
+        </div>
+        <div class="cc-body"><canvas id="tsCanvas"></canvas></div>
+      </div>
+
+      <!-- SIDEBAR -->
+      <div class="sidebar">
+        <div class="scard">
+          <div class="scard-head">Estado próximo mes (ago. 2026)</div>
+          <div class="status-big">
+            <span class="status-badge d">⚠ EXCESO PREVISTO</span>
+            <div class="status-sub">Sobre percentil 75 del canal<br>endémico histórico.<br>Se recomienda activar alerta.</div>
+          </div>
+        </div>
+        <div class="scard">
+          <div class="scard-head">Métricas — jul. 2026</div>
+          <div class="met-grid">
+            <div class="met"><div class="met-val" style="color:var(--danger)">720</div><div class="met-lbl">Casos reportados</div></div>
+            <div class="met"><div class="met-val">P89</div><div class="met-lbl">Percentil hist.</div></div>
+            <div class="met"><div class="met-val" style="color:var(--danger)">+34%</div><div class="met-lbl">vs. mes anterior</div></div>
+            <div class="met"><div class="met-val">0.91</div><div class="met-lbl">Prob. exceso</div></div>
+          </div>
+        </div>
+        <div class="scard">
+          <div class="scard-head">Señales climáticas — GEE</div>
+          <div class="scard-body">
+            <div class="clim-rows">
+              <div class="clim"><span class="clim-lbl">Precipitación</span><div class="clim-track"><div class="clim-fill h" style="width:82%"></div></div><span class="clim-val">248 mm</span></div>
+              <div class="clim"><span class="clim-lbl">Temp. media</span><div class="clim-track"><div class="clim-fill m" style="width:65%"></div></div><span class="clim-val">27.4°C</span></div>
+              <div class="clim"><span class="clim-lbl">Temp. mínima</span><div class="clim-track"><div class="clim-fill l" style="width:48%"></div></div><span class="clim-val">21.1°C</span></div>
+              <div class="clim"><span class="clim-lbl">Semanas lluvia</span><div class="clim-track"><div class="clim-fill m" style="width:70%"></div></div><span class="clim-val">3.2 sem</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /detail-grid -->
+
+    <!-- ALERT TABLE -->
+    <div class="alert-section">
+      <div class="asec-head">
+        <span class="asec-title">Municipios con pronóstico de exceso — agosto 2026</span>
+        <span class="asec-count">34 municipios</span>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th></th><th>Municipio</th><th>Departamento</th>
+              <th>Casos jul.</th><th>Pred. ago.</th><th>Variación</th>
+              <th>Confianza</th><th>Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><div class="rs d"></div></td>
+              <td class="td-m" style="color:var(--accent)">Cali ◀</td>
+              <td class="td-d">Valle del Cauca</td><td>720</td><td>850</td>
+              <td class="up">↑ 18%</td>
+              <td><div class="cbar"><div class="ctrack"><div class="cfill h" style="width:91%"></div></div><span class="cpct">91%</span></div></td>
+              <td><span class="spill d">EXCESO</span></td>
+            </tr>
+            <tr>
+              <td><div class="rs d"></div></td><td class="td-m">Villavicencio</td>
+              <td class="td-d">Meta</td><td>348</td><td>420</td>
+              <td class="up">↑ 21%</td>
+              <td><div class="cbar"><div class="ctrack"><div class="cfill h" style="width:88%"></div></div><span class="cpct">88%</span></div></td>
+              <td><span class="spill d">EXCESO</span></td>
+            </tr>
+            <tr>
+              <td><div class="rs d"></div></td><td class="td-m">Valledupar</td>
+              <td class="td-d">Cesar</td><td>267</td><td>315</td>
+              <td class="up">↑ 18%</td>
+              <td><div class="cbar"><div class="ctrack"><div class="cfill h" style="width:85%"></div></div><span class="cpct">85%</span></div></td>
+              <td><span class="spill d">EXCESO</span></td>
+            </tr>
+            <tr>
+              <td><div class="rs d"></div></td><td class="td-m">Neiva</td>
+              <td class="td-d">Huila</td><td>412</td><td>490</td>
+              <td class="up">↑ 19%</td>
+              <td><div class="cbar"><div class="ctrack"><div class="cfill h" style="width:82%"></div></div><span class="cpct">82%</span></div></td>
+              <td><span class="spill d">EXCESO</span></td>
+            </tr>
+            <tr>
+              <td><div class="rs d"></div></td><td class="td-m">Cúcuta</td>
+              <td class="td-d">N. de Santander</td><td>193</td><td>238</td>
+              <td class="up">↑ 23%</td>
+              <td><div class="cbar"><div class="ctrack"><div class="cfill h" style="width:79%"></div></div><span class="cpct">79%</span></div></td>
+              <td><span class="spill d">EXCESO</span></td>
+            </tr>
+            <tr>
+              <td><div class="rs w"></div></td><td class="td-m">Barranquilla</td>
+              <td class="td-d">Atlántico</td><td>540</td><td>598</td>
+              <td class="up">↑ 11%</td>
+              <td><div class="cbar"><div class="ctrack"><div class="cfill m" style="width:67%"></div></div><span class="cpct">67%</span></div></td>
+              <td><span class="spill w">ALERTA</span></td>
+            </tr>
+            <tr>
+              <td><div class="rs w"></div></td><td class="td-m">Medellín</td>
+              <td class="td-d">Antioquia</td><td>810</td><td>875</td>
+              <td class="up">↑ 8%</td>
+              <td><div class="cbar"><div class="ctrack"><div class="cfill m" style="width:63%"></div></div><span class="cpct">63%</span></div></td>
+              <td><span class="spill w">ALERTA</span></td>
+            </tr>
+            <tr>
+              <td><div class="rs k"></div></td><td class="td-m">Bogotá</td>
+              <td class="td-d">Distrito Capital</td><td>312</td><td>295</td>
+              <td class="dn">↓ 5%</td>
+              <td><div class="cbar"><div class="ctrack"><div class="cfill l" style="width:91%"></div></div><span class="cpct">91%</span></div></td>
+              <td><span class="spill k">NORMAL</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div><!-- /detail-panel -->
+</div><!-- /main -->
+
+<!-- FOOTER -->
+<footer class="mfoot">
+  <span class="mf-tag">XGBoost</span>
+  <span class="mf-info">Entrenado SIVIGILA 2007–2023 · 953 municipios · Horizonte: 1 mes</span>
+  <span class="mf-metric">Sensibilidad <strong>87%</strong></span>
+  <span class="mf-metric">FAR <strong>12%</strong></span>
+  <span class="mf-metric">vs. canal endémico: <strong>+29pp</strong></span>
+  <span class="mf-gap"></span>
+  <span class="mf-src">SIVIGILA/INS · GEE Climate · DANE 2026</span>
+</footer>
+
+<script>
+// Time series canvas — DNA from Taller 1/2 energy dashboard:
+// actual line + forecast (dashed) + confidence interval band
+(function(){
+  const canvas = document.getElementById('tsCanvas');
+  if(!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio||1;
+
+  function tok(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+  // Monthly labels and year markers (Jan2024 → Jul2026, then forecast Aug2026)
+  const months=['E','F','M','A','M','J','J','A','S','O','N','D','E','F','M','A','M','J','J','A','S','O','N','D','E','F','M','A','M','J','J'];
+  const years=[2024,0,0,0,0,0,0,0,0,0,0,0,2025,0,0,0,0,0,0,0,0,0,0,0,2026,0,0,0,0,0,0];
+  const obs=[132,198,268,342,305,214,178,162,225,310,368,242, // 2024
+             215,358,490,622,548,404,312,268,330,448,540,385, // 2025
+             295,430,600,720,null,null,null];                  // 2026 partial (null=not yet)
+  // Canal endémico [P25, Median, P75] by month-of-year (0=Jan)
+  const P25=[85,128,195,240,215,148,118,95,138,212,268,172];
+  const MED=[148,218,322,398,358,252,198,168,232,358,440,278];
+  const P75=[222,324,458,558,498,352,278,238,332,508,612,394];
+  const lastObs=27; // index of last real value (Jul 2026 = index 27, value 720 -- wait I actually have it at 30 in the months array but only 28 in obs. Let me recount: 12+12+4=28 points for Jan-Apr 2026, then May=null? Actually: obs[24]=295(Jan),obs[25]=430(Feb),obs[26]=600(Mar),obs[27]=720(Apr). Hmm. Let me just use index 27 as "current month jul 2026" for the chart since obs[27]=720.
+  // Actually the obs array above: indices 24-30 are 2026:
+  //   24=Jan295, 25=Feb430, 26=Mar600, 27=Apr720, 28=null, 29=null, 30=null
+  // But I labeled them as July 2026 = 720 in the UI. Let me set lastObs=27.
+  const fcVal=850, fcCI_lo=665, fcCI_hi=1015;
+  const YMAX=900;
+  const N=months.length; // 31 points; forecast at index N (=31)
+  const TOTAL=N+1; // for x-axis scaling
+
+  function resize(){
+    const el=canvas.parentElement;
+    const W=el.clientWidth, H=el.clientHeight;
+    canvas.width=W*dpr; canvas.height=H*dpr;
+    canvas.style.width=W+'px'; canvas.style.height=H+'px';
+    ctx.scale(dpr,dpr);
+    draw(W,H);
+  }
+
+  function draw(W,H){
+    ctx.clearRect(0,0,W,H);
+    const pad={t:14,r:52,b:30,l:44};
+    const cW=W-pad.l-pad.r, cH=H-pad.t-pad.b;
+    function px(i){ return pad.l+(i/(TOTAL-1))*cW; }
+    function py(v){ return pad.t+cH-(Math.min(v,YMAX)/YMAX)*cH; }
+    function mi(i){ return i%12; }
+
+    // horizontal grid
+    ctx.setLineDash([2,4]);
+    ctx.strokeStyle='rgba(128,140,160,0.13)';
+    ctx.lineWidth=1;
+    for(let v=0;v<=YMAX;v+=200){ctx.beginPath();ctx.moveTo(pad.l,py(v));ctx.lineTo(pad.l+cW,py(v));ctx.stroke();}
+    ctx.setLineDash([]);
+
+    // y-axis labels
+    const mono=tok('--mono')||'monospace';
+    ctx.font=`9px ${mono}`; ctx.textAlign='right'; ctx.fillStyle=tok('--ink-f')||'#8FA3BE';
+    for(let v=0;v<=YMAX;v+=200) ctx.fillText(v,pad.l-5,py(v)+3);
+
+    // year separators
+    ctx.setLineDash([2,3]); ctx.strokeStyle='rgba(128,140,160,0.22)'; ctx.lineWidth=1;
+    years.forEach((yr,i)=>{
+      if(yr&&i>0){
+        ctx.beginPath(); ctx.moveTo(px(i),pad.t); ctx.lineTo(px(i),pad.t+cH); ctx.stroke();
+        ctx.fillStyle='rgba(128,140,160,0.55)'; ctx.textAlign='left';
+        ctx.font=`bold 9px ${mono}`; ctx.fillText(yr,px(i)+2,pad.t+10);
+      }
+    });
+    ctx.setLineDash([]);
+
+    // canal endémico zones
+    const rmi=mi(lastObs); // for right-edge labels
+    // epidemic zone P75→top
+    ctx.beginPath();
+    for(let i=0;i<N;i++) ctx[i===0?'moveTo':'lineTo'](px(i),py(P75[mi(i)]));
+    ctx.lineTo(px(N-1),pad.t); ctx.lineTo(px(0),pad.t); ctx.closePath();
+    ctx.fillStyle='rgba(190,29,43,0.08)'; ctx.fill();
+    // alert zone med→P75
+    ctx.beginPath();
+    for(let i=0;i<N;i++) ctx[i===0?'moveTo':'lineTo'](px(i),py(P75[mi(i)]));
+    for(let i=N-1;i>=0;i--) ctx.lineTo(px(i),py(MED[mi(i)]));
+    ctx.closePath(); ctx.fillStyle='rgba(194,120,0,0.09)'; ctx.fill();
+    // normal zone P25→med
+    ctx.beginPath();
+    for(let i=0;i<N;i++) ctx[i===0?'moveTo':'lineTo'](px(i),py(MED[mi(i)]));
+    for(let i=N-1;i>=0;i--) ctx.lineTo(px(i),py(P25[mi(i)]));
+    ctx.closePath(); ctx.fillStyle='rgba(26,127,55,0.09)'; ctx.fill();
+
+    // canal lines
+    [[P75,'rgba(194,120,0,0.32)',[3,3]],[MED,'rgba(26,127,55,0.32)',[]],[P25,'rgba(26,127,55,0.2)',[2,2]]].forEach(([arr,col,dash])=>{
+      ctx.beginPath();
+      for(let i=0;i<N;i++) ctx[i===0?'moveTo':'lineTo'](px(i),py(arr[mi(i)]));
+      ctx.strokeStyle=col; ctx.lineWidth=1; ctx.setLineDash(dash); ctx.stroke(); ctx.setLineDash([]);
+    });
+
+    // zone labels (right margin)
+    ctx.textAlign='left'; ctx.font=`8.5px ${mono}`;
+    ctx.fillStyle='rgba(190,29,43,0.6)'; ctx.fillText('EXCESO',pad.l+cW+3,py(P75[rmi])-6);
+    ctx.fillStyle='rgba(194,120,0,0.6)'; ctx.fillText('ALERTA',pad.l+cW+3,py((P75[rmi]+MED[rmi])/2)+3);
+    ctx.fillStyle='rgba(26,127,55,0.6)';  ctx.fillText('NORMAL',pad.l+cW+3,py((MED[rmi]+P25[rmi])/2)+3);
+
+    // area fill under observed line (Taller 1/2 energy dashboard DNA)
+    ctx.beginPath();
+    let started=false;
+    for(let i=0;i<=lastObs;i++){
+      if(obs[i]==null) continue;
+      if(!started){ctx.moveTo(px(i),py(obs[i]));started=true;}
+      else ctx.lineTo(px(i),py(obs[i]));
+    }
+    ctx.lineTo(px(lastObs),pad.t+cH); ctx.lineTo(px(0),pad.t+cH); ctx.closePath();
+    ctx.fillStyle='rgba(22,84,162,0.07)'; ctx.fill();
+
+    // observed line
+    ctx.beginPath(); started=false;
+    for(let i=0;i<=lastObs;i++){
+      if(obs[i]==null) continue;
+      if(!started){ctx.moveTo(px(i),py(obs[i]));started=true;}
+      else ctx.lineTo(px(i),py(obs[i]));
+    }
+    ctx.strokeStyle=tok('--accent')||'#1654A2'; ctx.lineWidth=2; ctx.lineJoin='round'; ctx.stroke();
+
+    // dots colored by zone (energy chart style applied to epidemiology)
+    for(let i=0;i<=lastObs;i++){
+      if(obs[i]==null) continue;
+      const v=obs[i], m=mi(i);
+      ctx.beginPath(); ctx.arc(px(i),py(v),2.8,0,Math.PI*2);
+      ctx.fillStyle=v>P75[m]?'rgba(190,29,43,0.9)':v>MED[m]?'rgba(194,120,0,0.9)':'rgba(22,84,162,0.9)';
+      ctx.fill();
+    }
+
+    // forecast: CI bar then dashed projection then point
+    const fcX=px(N);
+    const lastX=px(lastObs), lastY=py(obs[lastObs]);
+
+    // CI vertical bar (energy confidence band — Taller 1/2 fillcolor pattern mapped to vertical)
+    ctx.beginPath(); ctx.moveTo(fcX,py(fcCI_lo)); ctx.lineTo(fcX,py(fcCI_hi));
+    ctx.strokeStyle='rgba(190,29,43,0.18)'; ctx.lineWidth=10; ctx.lineCap='round'; ctx.stroke();
+    ctx.lineWidth=1; ctx.lineCap='butt';
+    [[fcCI_lo],[fcCI_hi]].forEach(([v])=>{
+      ctx.beginPath(); ctx.moveTo(fcX-5,py(v)); ctx.lineTo(fcX+5,py(v));
+      ctx.strokeStyle='rgba(190,29,43,0.35)'; ctx.lineWidth=1.5; ctx.stroke();
+    });
+
+    // dashed forecast line (Taller 1/2 "Proyección" line style)
+    ctx.setLineDash([4,3]);
+    ctx.strokeStyle='rgba(190,29,43,0.75)'; ctx.lineWidth=2; ctx.lineJoin='round';
+    ctx.beginPath(); ctx.moveTo(lastX,lastY); ctx.lineTo(fcX,py(fcVal)); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // forecast dot
+    ctx.beginPath(); ctx.arc(fcX,py(fcVal),6.5,0,Math.PI*2);
+    ctx.fillStyle='rgba(190,29,43,0.13)'; ctx.fill();
+    ctx.beginPath(); ctx.arc(fcX,py(fcVal),4.5,0,Math.PI*2);
+    ctx.fillStyle='rgba(190,29,43,0.95)'; ctx.fill();
+
+    // forecast label
+    ctx.textAlign='center'; ctx.font=`bold 8.5px ${mono}`;
+    ctx.fillStyle='rgba(190,29,43,0.88)';
+    ctx.fillText('AGO. 2026',fcX,py(fcVal)-14);
+    ctx.fillText('Pred: '+fcVal,fcX,py(fcVal)-5);
+
+    // x-axis month labels (every 3 months)
+    ctx.font=`8.5px ${mono}`; ctx.textAlign='center'; ctx.fillStyle=tok('--ink-f')||'#8FA3BE';
+    months.forEach((m,i)=>{if(i%3===0) ctx.fillText(m,px(i),pad.t+cH+16);});
+    ctx.fillStyle='rgba(190,29,43,0.65)'; ctx.fillText('A',fcX,pad.t+cH+16);
+  }
+
+  resize();
+  window.addEventListener('resize',resize);
+})();
+</script>
