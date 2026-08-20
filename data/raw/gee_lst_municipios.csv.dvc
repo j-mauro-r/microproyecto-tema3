@@ -1,0 +1,5 @@
+outs:
+- md5: e881fce8007516cb2e8573f22efc35c4
+  size: 387329459
+  hash: md5
+  path: gee_lst_municipios.csv
