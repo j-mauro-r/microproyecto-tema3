@@ -1,0 +1,5 @@
+outs:
+- md5: 955816da5a7877e8c082422896bae969
+  size: 8988370
+  hash: md5
+  path: dengue_semanal_municipio_completo.csv

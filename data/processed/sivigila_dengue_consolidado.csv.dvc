@@ -1,0 +1,5 @@
+outs:
+- md5: 3e726b52da18cd57dcd81009e8d58750
+  size: 814272444
+  hash: md5
+  path: sivigila_dengue_consolidado.csv
