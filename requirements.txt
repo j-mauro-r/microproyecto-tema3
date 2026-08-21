@@ -1,0 +1,4 @@
+polars==1.43.2
+pandas==3.0.5
+earthengine-api==1.7.40
+pyarrow==25.0.1
