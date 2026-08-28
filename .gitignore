@@ -1,2 +1,10 @@
 .venv/
 dev.md
+.env
+data/raw/dengue/*.xlsx
+data/raw/dengue_grave/*.xlsx
+data/raw/google_earth_engine_divipola/*.csv
+data/raw/dengue.csv
+data/raw/dengue_grave.csv
+data/raw/google_earth_engine.csv
+data/processed/bulk_processing.py
