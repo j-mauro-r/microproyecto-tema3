@@ -1,6 +1,5 @@
 .venv/
 dev.md
-<<<<<<< HEAD
 .env
 data/raw/dengue/*.xlsx
 data/raw/dengue_grave/*.xlsx
@@ -9,5 +8,3 @@ data/raw/dengue.csv
 data/raw/dengue_grave.csv
 data/raw/google_earth_engine.csv
 data/processed/bulk_processing.py
-=======
->>>>>>> 384825ca309df52fad99d340ed1f6a08e057f06b
