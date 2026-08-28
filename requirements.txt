@@ -1,6 +1,13 @@
+<<<<<<< HEAD
 pandas==3.0.5
 openpyxl==3.1.5
 kagglehub==1.0.2
 python-dotenv==1.2.3
 python-calamine==0.8.2
 matplotlib==3.11.1
+=======
+polars==1.43.2
+pandas==3.0.5
+earthengine-api==1.7.40
+pyarrow==25.0.1
+>>>>>>> 384825ca309df52fad99d340ed1f6a08e057f06b

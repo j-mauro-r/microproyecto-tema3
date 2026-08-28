@@ -31,12 +31,56 @@ Se desarrolla un prototipo funcional de alerta temprana que integra:
 
 | Fuente | Descripción | Período | Acceso |
 |--------|-------------|---------|--------|
-| SIVIGILA / INS | Casos confirmados de dengue por municipio, agregados mensualmente | 2007–2024 | Público — [datos.gov.co](https://www.datos.gov.co/dataset/Dengue/ke8u-qixu) |
-| Google Earth Engine | Temperatura media y precipitación mensual por municipio | 2007–2024 | Requiere cuenta GEE con proyecto GCP |
+| SIVIGILA / INS | Casos confirmados de dengue por municipio, agregados semanalmente | 2007–2024 | Público — [datos.gov.co](https://www.datos.gov.co/dataset/Dengue/ke8u-qixu) |
+| Google Earth Engine | Temperatura superficial diaria por municipio | 2007–2024 | Requiere cuenta GEE con proyecto GCP |
 | DANE | Población urbana y rural por municipio | 2005, 2018, proyecciones 2024 | Público — [dane.gov.co](https://www.dane.gov.co) |
 
 ---
 
+## Datos versionados (DVC)
+
+Los datasets se versionan con DVC y se almacenan en un bucket de Amazon S3:
+`s3://microproyecto-tema3-dvc/dvcstore`
+
+En Git solo quedan los archivos `.dvc` con la huella de cada dataset; los archivos de datos no se suben al repositorio.
+
+### Datasets disponibles
+
+| Archivo | Contenido | Registros |
+|---------|-----------|-----------|
+| `data/raw/Dengue_2.csv` | Notificaciones de dengue clásico (COD_EVE 210), SIVIGILA 2007–2024 | 1.585.040 |
+| `data/raw/Dengue_Grave_2.csv` | Notificaciones de dengue grave (COD_EVE 220), SIVIGILA 2007–2024 | 48.823 |
+| `data/raw/gee_lst_municipios.csv` | Temperatura superficial diaria por municipio (Google Earth Engine), 2007–2024 | 7.140.450 |
+
+Dengue clásico y dengue grave son eventos de notificación distintos en SIVIGILA, sin registros compartidos entre ambos.
+
+### Cómo obtener los datos
+
+1. Instalar DVC con soporte para S3:
+
+       pip install "dvc[s3]"
+
+2. Configurar las credenciales de AWS en `~/.aws/credentials` (en Windows, `C:\Users\user\.aws\credentials`) con el bloque que entrega AWS Academy en "AWS Details" > "AWS CLI".
+
+3. Descargar los datos:
+
+       dvc pull
+
+### Notas de acceso
+
+El bucket vive en una cuenta de AWS Academy, que entrega credenciales temporales con token de sesión. Estas vencen al cerrar la sesión del laboratorio y hay que refrescarlas en cada uso.
+
+### Notas sobre los datos
+
+El archivo `gee_lst_municipios.csv` no está codificado en UTF-8. Los municipios con eñe aparecen corruptos (Saldaña, Ocaña). Al leerlo con pandas hay que indicar la codificación:
+
+       pd.read_csv("data/raw/gee_lst_municipios.csv", encoding="latin-1")
+
+Ese archivo tampoco trae códigos DIVIPOLA sino códigos GAUL de la FAO, distintos de los que usa SIVIGILA. El cruce entre ambas fuentes debe hacerse por departamento y nombre de municipio, normalizando mayúsculas y tildes.
+
+La temperatura del archivo ya viene convertida a grados Celsius en la columna `lst_celsius`. Los archivos anuales originales traen el valor crudo del producto MODIS, que requiere la conversión `valor * 0.02 - 273.15`.
+
+---
 ## Metodología
 
 ### Definición de exceso de casos
