@@ -10,10 +10,15 @@ aprenderia del futuro para predecir el pasado.
 
 No hay un anio fijo de validacion. Los hiperparametros se escogen con
 validacion cruzada temporal sobre el entrenamiento (folds_temporales), porque
-en Bucaramanga y Cali los anios 2018, 2021 y 2022 no tienen ningun mes por
-encima del canal endemico, ni con la serie de dengue grave ni con la de
-clasico. Cualquier anio suelto puede quedarse sin positivos y dejar la
-validacion sin nada que medir.
+en Bucaramanga y Cali los anios 2017, 2018, 2021 y 2022 no tienen ningun mes
+por encima del canal endemico. Cualquier anio suelto puede quedarse sin
+positivos y dejar la validacion sin nada que medir. Los folds vacios igual
+sirven: miden falsas alarmas.
+
+Cada fold recalcula el canal con su propia ventana de referencia
+(build_features.aplicar_referencia con ref_fin = anio - 1). Un p75 calculado
+hasta 2022 y usado para validar 2015 ya vio ocho anios de futuro, y como la
+etiqueta es casos > p75, la fuga alcanzaria tambien a la etiqueta.
 
 La prueba abarca 2023, 2024 y 2025 para cubrir los tres regimenes: subida,
 epidemia (2024 es el anio con mas casos de la serie) y descenso. Con solo un
@@ -138,26 +143,6 @@ def folds_temporales(
         val = df[df[col_anio] == anio]
         if len(train) and len(val):
             yield anio, train, val
-
-
-def resumen_folds(df: pd.DataFrame, col_objetivo: str, **kw) -> pd.DataFrame:
-    """Tamano y tasa de positivos de cada fold."""
-    filas = [
-        {
-            "fold": anio,
-            "train": len(tr),
-            "val": len(va),
-            "positivos_val": int(va[col_objetivo].sum()),
-            "tasa_val": round(100 * va[col_objetivo].mean(), 1),
-        }
-        for anio, tr, va in folds_temporales(df, **kw)
-    ]
-    tabla = pd.DataFrame(filas)
-    print(tabla.to_string(index=False))
-    vacios = tabla.loc[tabla["positivos_val"] == 0, "fold"].tolist()
-    if vacios:
-        print(f"  folds sin positivos, no aportan sensibilidad: {vacios}")
-    return tabla
 
 
 def verificar_sin_fuga(p: ParticionTemporal) -> None:

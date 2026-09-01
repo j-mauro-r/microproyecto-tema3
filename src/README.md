@@ -8,8 +8,8 @@ Sistema de alerta temprana de dengue para Bucaramanga (68001) y Cali (76001).
 
 ```
 Kaggle: saballesteros/maia4331-2614-grupo19
-   dengue.csv              1.705.604 casos de dengue clasico, 2007-2025
-   dengue_grave.csv           50.101 casos de dengue grave, 2007-2025
+   dengue.csv               1.705.604 casos de dengue clasico, 2007-2025
+   dengue_grave.csv            50.101 casos de dengue grave, 2007-2025
    google_earth_engine.csv  7.751.898 filas de clima diario por municipio
         |
         |  data/download_datasets.py
@@ -19,7 +19,7 @@ Kaggle: saballesteros/maia4331-2614-grupo19
         |  src/data/build_panel.py
         v
    data/processed/panel_mensual.parquet          20 MB
-   una fila por municipio y mes, 253.992 filas, 1.114 municipios
+   una fila por municipio y mes, 253.992 filas, 1.114 municipios, 2007-2025
         |
         |  src/features/build_features.py
         v
@@ -55,7 +55,7 @@ python -m tests.test_features
 | `src/evaluation/splits.py` | Particion temporal y folds de validacion cruzada |
 | `src/evaluation/metrics.py` | Metricas de alerta, iguales para todos los modelos |
 | `src/models/baseline.py` | Los cuatro baselines de referencia |
-| `tests/` | Verificacion de los modulos compartidos |
+| `tests/` | 66 verificaciones, sin dependencias adicionales |
 
 ---
 
@@ -69,7 +69,7 @@ python -m tests.test_features
 
 Se usa `INI_SIN` con respaldo en `FEC_NOT`, siguiendo la indicacion del profesor: es cuando la persona enfermo y no depende del retraso del sistema de vigilancia.
 
-Las fechas vienen como `16/09/2007 12:00:00 a. m.` en formato dia/mes/anio, y se parsean con `format="%d/%m/%Y"` explicito. Sin declarar el formato, pandas no logra inferirlo por el `" a. m."`, cae a `dateutil` y asume mes/dia: toda fecha con dia menor o igual a 12, alrededor del 39% de los registros, queda con el mes cambiado.
+Las fechas vienen como `16/09/2007 12:00:00 a. m.` en formato dia/mes/anio, y se parsean con `format="%d/%m/%Y"` explicito. Sin declarar el formato, pandas no logra inferirlo por el `" a. m."` del final, cae a `dateutil` y asume mes/dia: toda fecha con dia menor o igual a 12, alrededor del 39% de los registros, queda con el mes cambiado.
 
 Efecto de usar `INI_SIN`: se descartan 237 casos con sintomas iniciados en 2006 y notificados en 2007. Hay 133 registros con `INI_SIN` vacio que entran por el respaldo.
 
@@ -102,15 +102,28 @@ Los rezagos son meses calendario. Con filas faltantes, `shift(1)` devuelve la fi
 
 `google_earth_engine.csv` (ERA5-Land y CHIRPS) trae `mpio_cdpmp` con el DIVIPOLA completo, asi que el cruce va por codigo. El archivo anterior, de MODIS, traia codigos GAUL de la FAO y obligaba a cruzar por nombre de municipio, perdiendo alrededor del 20%. El pipeline detecta cual de los dos formatos recibe y avisa si es el viejo.
 
+### El objetivo es dengue total
+
+`SERIE_OBJETIVO = "casos_clasico"`. Se cambio desde dengue grave el 1 de septiembre, por decision de equipo, porque la serie de graves quedo inservible despues del cambio de clasificacion de la OMS de 2009 (ver Limitaciones).
+
 ### Etiqueta de brote
 
-Un mes es brote si los casos de ese municipio y ese mes superan el **P75 historico del mismo mes**, calculado sobre 2007-2022. Es la zona de epidemia del canal endemico.
+Un mes es brote si los casos de ese municipio y ese mes superan el **P75 historico del mismo mes**. Es la zona de epidemia del canal endemico.
 
-La serie sobre la que se calcula esta en la constante `SERIE_OBJETIVO` de `build_features.py`. Hoy es `casos_grave`, siguiendo la propuesta del equipo.
+`es_inicio` marca el primer mes de cada brote: es brote y el mes anterior no lo era. No es variable predictora, porque depende del mes en curso. Sirve para separar, al evaluar, la deteccion de inicios de la de continuaciones.
+
+P75 mensual resultante con referencia 2007-2022:
+
+```
+Bucaramanga     219  244  320  366  315  340  378  283  309  268  232  158
+Cali            838 1146 1580 1192  952  758  652  667  506  480  513  586
+```
 
 ### Municipio endemico
 
-Criterio de `Decisiones_Metodologicas`: al menos **diez anios con casos y doscientos casos acumulados**, sobre la serie de dengue clasico, dentro de la ventana de referencia.
+Criterio de `Decisiones_Metodologicas`: al menos **diez anios con casos y doscientos casos acumulados**, sobre la serie de dengue clasico, dentro de la ventana de referencia. Da **523 municipios de 1.114**.
+
+El documento estimaba entre 120 y 150; el EDA del equipo obtuvo 621 sobre una ventana mas larga y sin filtrar el exterior. El criterio escrito da 523, no el rango estimado.
 
 La PR #8 usaba tres meses con casos y cincuenta acumulados sobre la serie de graves. Se cambio al criterio del documento para que el codigo y la memoria metodologica digan lo mismo.
 
@@ -123,15 +136,23 @@ prueba        : 2023 - 2025    se evalua una sola vez, al final
 
 No hay un anio fijo de validacion. Los hiperparametros se escogen con `folds_temporales`: cada fold entrena con todos los anios anteriores y valida sobre uno solo, avanzando de 2015 a 2022.
 
-La razon es concreta. **2018, 2021 y 2022 no tienen ni un mes por encima del canal en Bucaramanga ni en Cali**, ni con la serie de graves ni con la de clasicos, ni con referencia 2007-2021 ni con 2011-2021. Se comprobo con las cuatro combinaciones. Un anio suelto de validacion puede quedarse sin positivos y dejar la seleccion de hiperparametros sin nada que medir.
+La razon es concreta: **2008, 2011, 2017, 2018, 2021 y 2022 no tienen ni un mes por encima del canal** en Bucaramanga ni en Cali. Un anio suelto de validacion puede quedarse sin positivos y dejar la seleccion de hiperparametros sin nada que medir. Los folds vacios igual sirven, porque miden falsas alarmas.
 
-La prueba cubre tres anios a proposito: 2023 de subida (126.411 casos de clasico), 2024 de epidemia (309.627, el maximo de la serie) y 2025 de descenso (120.564). Con un solo anio epidemico, un modelo que alerta siempre saldria bien; con 2025 adentro, paga en falsas alarmas.
+La prueba cubre tres anios a proposito: 2023 de subida (126.411 casos de clasico), 2024 de epidemia (309.627, el maximo de la serie) y 2025 de descenso (120.564). Con un solo anio epidemico, un modelo que alerta siempre saldria bien.
+
+### Cada fold recalcula su propia referencia
+
+El canal, el SIR, la endemicidad y la etiqueta dependen de la ventana de referencia, y se recalculan por fold con `aplicar_referencia(df, ref_fin=anio - 1)`.
+
+Sin eso hay fuga: un P75 calculado hasta 2022 y usado para validar 2015 ya vio ocho anios de futuro, y como la etiqueta es `casos > p75`, la contaminacion alcanza tambien a la etiqueta. El archivo de variables trae esas columnas calculadas hasta 2022, que es correcto para la prueba (2023-2025) pero seria fuga dentro de la validacion cruzada.
+
+`tests/test_features.py::test_referencia_expansiva` lo fija: altera todos los casos de 2015 en adelante y verifica que el P75 con `ref_fin=2014` no se mueve, mas la contraprueba de que con la ventana completa si cambia.
 
 ### Metricas
 
-No se usa exactitud como criterio. El 93,5% de los meses no tienen casos graves, asi que un modelo que nunca alerta acierta el 93,5%. Se calcula y se reporta unicamente para dejarlo en evidencia.
+No se usa exactitud como criterio. En los folds los meses por encima del canal son el 14,1%, asi que un modelo que nunca alerta acierta el 86% sin detectar un solo brote.
 
-Las que deciden son sensibilidad, precision, tasa de falsas alarmas y PR-AUC, mas el desglose por municipio.
+Las que deciden son sensibilidad, precision, tasa de falsas alarmas y PR-AUC, mas dos desgloses: por municipio, y separando inicios de brote de continuaciones.
 
 El PR-AUC esta implementado a mano para no depender de scikit-learn, que no esta en `requirements.txt`. Se valido contra `sklearn.metrics.average_precision_score` en 300 casos aleatorios con distintos tamanos, tasas de positivos y puntajes empatados: diferencia maxima 3,3e-16. Sensibilidad, precision, F1 y matriz de confusion se contrastaron igual en 200 casos mas.
 
@@ -144,31 +165,62 @@ El PR-AUC esta implementado a mano para no depender de scikit-learn, que no esta
 | `persistencia` | alerta si el mes anterior fue brote |
 | `canal_endemico` | alerta si el mes anterior quedo por encima del P75 |
 
-`canal_endemico` es el rival real: es lo que hoy hace una secretaria de salud mirando su grafica, sin modelo. Cualquier modelo tiene que ganarle en sensibilidad sin disparar las falsas alarmas.
+---
+
+## Resultados de los baselines
+
+Agregado de los ocho folds, 192 meses, 27 brotes (14,1%):
+
+| | sensibilidad | precision | F1 | falsas alarmas |
+|---|---|---|---|---|
+| nunca_alerta | 0,000 | — | 0,000 | 0,000 |
+| siempre_alerta | 1,000 | 0,141 | 0,247 | 1,000 |
+| **persistencia** | 0,889 | 0,857 | **0,873** | 0,024 |
+| **canal_endemico** | 0,926 | 0,806 | 0,862 | 0,036 |
+
+Fold por fold:
+
+```
+ fold       ref  meses  brotes  inicios
+ 2015 2007-2014     24      13        1
+ 2016 2007-2015     24       9        1
+ 2017 2007-2016     24       0        0
+ 2018 2007-2017     24       0        0
+ 2019 2007-2018     24       2        1
+ 2020 2007-2019     24       3        0
+ 2021 2007-2020     24       0        0
+ 2022 2007-2021     24       0        0
+```
 
 ---
 
-## Supuestos
+## Limitacion principal: la etiqueta es un estado, no un evento
 
-Se cuentan todos los registros del archivo. **Las columnas `AJUSTE` y `TIP_CAS` no se estan usando para filtrar**, y ambas afectan el conteo: en SIVIGILA `AJUSTE` marca el estado del caso y algunos codigos corresponden a casos descartados, y `TIP_CAS` distingue confirmado por laboratorio de confirmado por clinica o por nexo epidemiologico. Es pregunta abierta para el experto.
+**Esta es la observacion mas importante del pipeline y condiciona lo que puede aportar cualquier modelo.**
 
-El municipio es el de **ocurrencia** (`COD_MUN_O`), no el de residencia ni el de notificacion. Para decidir donde mandar control vectorial, ocurrencia es lo epidemiologicamente correcto.
+De los 27 meses en brote de los folds, **3 son inicio de brote y 24 son continuacion**. Cali estuvo 12 meses seguidos por encima del P75 en 2015 y 9 en 2016. A escala mensual con umbral P75, "brote" no es un evento que ocurre: es un estado que dura casi un anio.
 
-Las variables climaticas son promedios mensuales de series diarias. El 3,7% de los municipios-mes queda sin clima porque el archivo climatico cubre 1.121 municipios y el panel tiene 1.114 codigos, con unos cuarenta que no coinciden.
+Eso hace que predecir el mes siguiente sea casi determinista, y explica por que los baselines lucen tan bien:
 
-La referencia del canal endemico coincide con la ventana de entrenamiento. Si se cambia una, hay que cambiar la otra: `REF_FIN` en `build_features.py` y `ANIO_FIN_TRAIN` en `splits.py`.
+| | inicios detectados | continuaciones detectadas |
+|---|---|---|
+| persistencia | **0 de 3** | 24 de 24 |
+| canal_endemico | 2 de 3 | 23 de 24 |
+
+El F1 de 0,873 de la persistencia sale casi entero de acertar que un brote que ya empezo sigue. Operativamente eso no vale nada: cuando va el mes dos de un brote, la secretaria de salud ya lo sabe. **Todo el valor de un sistema de alerta temprana esta en esos 3 meses de inicio, y la persistencia no detecta ninguno por construccion.**
+
+Por eso el baseline reporta las dos vistas. Un modelo que mejore el F1 agregado sin mejorar la deteccion de inicios no esta aportando nada.
+
+Con 3 inicios en ocho anios de dos municipios no hay estadistica posible, solo conteo. Dos caminos, ninguno para esta entrega:
+
+- **Subir el horizonte de prediccion.** Predecir el mes t con informacion hasta t-3 en vez de t-1. La persistencia se degrada y el modelo tiene donde aportar. Es un experimento comparable en MLflow.
+- **Bajar a granularidad semanal.** Cuadruplicaria las observaciones y las transiciones, y con dengue total la serie da (Cali 57 a 680 casos por semana, Bucaramanga 5 a 219). Implica rehacer el panel.
 
 ---
 
-## Limitacion principal: el objetivo y el alcance
+## Por que se cambio de dengue grave a dengue total
 
-Esta es la limitacion que condiciona todo lo demas y probablemente obligue a
-cambiar el alcance de la entrega.
-
-### El cambio de clasificacion de la OMS de 2009 parte la serie en dos
-
-La tasa de gravedad nacional cae de 19,7% en 2007 a 0,94% en 2017. En
-Bucaramanga el quiebre es de 45 veces entre dos anios consecutivos:
+El cambio de clasificacion de la OMS de 2009, adoptado en Colombia hacia 2010-2011, parte la serie de dengue grave en dos:
 
 ```
 casos graves en Bucaramanga
@@ -178,83 +230,53 @@ casos graves en Bucaramanga
 2010    811      2014   67      2021   3
 ```
 
-Una caida asi no es una mejora clinica. Es la definicion de caso, que Colombia
-adopto hacia 2010-2011. Despues de 2011 Bucaramanga registra entre 1 y 14
-casos graves **al anio**.
+Una caida de 45 veces entre dos anios consecutivos no es una mejora clinica. A nivel nacional la tasa de gravedad pasa de 19,7% en 2007 a 0,94% en 2017.
 
-### Consecuencia sobre el canal
+Con dengue grave, el P75 de Bucaramanga quedaba entre 5 y 17 casos al mes, umbral fijado por 2007-2010 e inalcanzable en el regimen actual. En la practica Bucaramanga no podia generar alertas y solo se medi­a Cali. Los folds quedaban con 7 positivos en 192 meses (3,6%) contra 24,2% del bloque de entrenamiento: se entrenaba sobre un regimen que termino hace quince anios.
 
-El P75 de Bucaramanga, calculado sobre 2007-2022, queda entre 5 y 17 casos al
-mes. Ese umbral lo fijan 2007-2010 y es inalcanzable en el regimen actual. En
-la practica **Bucaramanga casi no puede generar una alerta**, y lo que se
-termina midiendo es Cali.
-
-Eso produce una separacion grande entre el bloque de entrenamiento y los anios
-que de verdad sirven para escoger hiperparametros:
-
-```
-entrenamiento 2007-2022    93 brotes / 384 meses   24,2%
-folds 2015-2022             7 brotes / 192 meses    3,6%
-prueba 2023-2025           16 brotes /  72 meses   22,2%
-```
-
-Los 93 brotes del entrenamiento estan casi todos entre 2007 y 2014. Cinco de
-los ocho folds no tienen ni un positivo.
-
-### Las alternativas, medidas
+Se midieron cinco configuraciones antes de decidir:
 
 | Objetivo | Referencia | Train | Folds | Prueba | Folds vacios |
 |---|---|---|---|---|---|
-| grave | 2007-2022 (configuracion actual) | 24,2% | 3,6% | 22,2% | 5 de 8 |
+| grave | 2007-2022 | 24,2% | 3,6% | 22,2% | 5 de 8 |
 | grave | 2011-2022 | 37,0% | 9,4% | 47,2% | 4 de 8 |
 | grave | 2013-2022 | 39,6% | 12,0% | 51,4% | 3 de 8 |
-| clasico | 2007-2022 | 25,0% | 16,7% | 58,3% | 4 de 8 |
+| **clasico** | **2007-2022** | 25,0% | **14,1%** | 58,3% | 4 de 8 |
 | clasico | 2011-2022 | 26,6% | 19,3% | 66,7% | 4 de 8 |
 
-La columna que importa es la distancia entre train y folds, porque mide cuanto
-se parece el pasado sobre el que se entrena al presente sobre el que se
-predice.
+Recortar la referencia manteniendo dengue grave no era salida: con 2013-2022 el P75 de Bucaramanga en julio da cero, con lo que un solo caso en el mes cuenta como epidemia.
 
-Recortar la referencia a 2013-2022 manteniendo dengue grave no sirve: el P75 de
-Bucaramanga en julio da cero, con lo que un solo caso en el mes cuenta como
-epidemia. Eso deja de ser un canal endemico.
+El cambio es una constante (`SERIE_OBJETIVO`), asi que volver atras o probar la otra serie cuesta una linea.
 
-### Que se decidio
+---
 
-Se mantiene **dengue grave con referencia 2007-2022**, que es lo que dice la
-propuesta del equipo, y se documenta la limitacion en lugar de cambiar el
-alcance sin consultarlo. El cambio es una sola constante (`SERIE_OBJETIVO` en
-`build_features.py`, `REF_INICIO` y `REF_FIN` para la ventana).
+## Supuestos
 
-Hay dos salidas posibles y las dos son decision de equipo con el experto:
-cambiar el objetivo a dengue total, o cambiar los municipios del alcance por
-otros donde la serie de dengue grave siga siendo densa despues de 2011.
+Se cuentan todos los registros del archivo. **Las columnas `AJUSTE` y `TIP_CAS` no se usan para filtrar**, y ambas afectan el conteo: en SIVIGILA `AJUSTE` marca el estado del caso y algunos codigos corresponden a casos descartados, y `TIP_CAS` distingue confirmado por laboratorio de confirmado por clinica o por nexo epidemiologico. Es pregunta abierta para el experto.
+
+El municipio es el de **ocurrencia** (`COD_MUN_O`), no el de residencia ni el de notificacion. Para decidir donde mandar control vectorial, ocurrencia es lo epidemiologicamente correcto.
+
+Las variables climaticas son promedios mensuales de series diarias. El 3,7% de los municipios-mes queda sin clima porque el archivo climatico cubre 1.121 municipios y el panel tiene 1.114 codigos, con unos cuarenta que no coinciden.
+
+La referencia del canal coincide con la ventana de entrenamiento. Si se cambia una hay que cambiar la otra: `REF_FIN` en `build_features.py` y `ANIO_FIN_TRAIN` en `splits.py`.
+
+---
 
 ## Otras limitaciones
 
-**Los anios epidemicos no estan definidos de forma consistente.** El documento
-de decisiones lista 2010, 2013, 2016 y 2019; el EDA agrega 2023 y 2024. Ninguna
-de las dos listas incluye 2024 como lo que es: el anio con mas casos de toda la
-serie, 309.627 de clasico, mas del doble que 2010. Y 2014, con 105.356 casos,
-queda fuera mientras 2016, con 100.117, entra.
+**La prueba tiene 58,3% de meses en brote**, y 2024 tiene los 24 meses. No es un error del canal, 2024 fue epidemico todo el anio, pero como conjunto de evaluacion es flojo: `siempre_alerta` saca 0,583 de precision sin hacer nada.
 
-**Los anios 2017, 2018, 2021 y 2022 no tienen brotes** en Bucaramanga ni en
-Cali, con ninguna configuracion de objetivo ni de referencia. No es un error:
-fueron anios tranquilos. Esos folds igual aportan, porque miden falsas alarmas.
+**Bucaramanga aporta un solo brote en los ocho folds**, los otros 26 son de Cali. El cambio a dengue total resolvio la escasez global, de 7 brotes a 27, pero no que Bucaramanga siga siendo casi invisible en la validacion cruzada. Su P75 lo fijan 2010, 2013 y 2014, y entre 2015 y 2022 no vuelve a esos niveles. En la prueba si aparece, con 23 de 36 meses.
 
-**El numero de municipios endemicos del documento no se habia verificado.** El
-texto estima entre 120 y 150. Aplicando el criterio escrito sobre los datos
-reales dan 523 dentro de 2007-2022, y el EDA del equipo obtuvo 621 sobre una
-ventana mas larga y sin filtrar el exterior.
+**Los anios epidemicos no estan definidos de forma consistente.** El documento de decisiones lista 2010, 2013, 2016 y 2019; el EDA agrega 2023 y 2024. Ninguna de las dos listas incluye 2024, que es el anio con mas casos de toda la serie con 309.627, mas del doble que 2010. Y 2014, con 105.356, queda fuera mientras 2016, con 100.117, entra.
 
-**Cuidado al leer el baseline de persistencia.** Su sensibilidad y su precision
-son siempre iguales, porque correr una serie binaria un mes conserva la
-cantidad de unos y hace que las alertas emitidas coincidan con los brotes
-reales. Es aritmetica, no desempenio.
+**Cuidado al leer el baseline de persistencia.** En el agregado su sensibilidad y su precision son siempre iguales, porque correr una serie binaria un mes conserva la cantidad de unos y hace que las alertas emitidas coincidan con los brotes reales. Es aritmetica, no desempenio.
+
+---
 
 ## Pendientes
 
+- MLflow en EC2 para registrar los experimentos.
 - Realinear DVC para que versione `data/processed/` en vez de los crudos viejos, que ya no existen. Los tres `.dvc` de `data/raw/` quedaron sin actualizar.
 - Un target de `make` para el panel y las variables.
-- MLflow para registrar los experimentos.
-- Llevar al experto: `AJUSTE`, `TIP_CAS`, el tratamiento del quiebre de 2011 y si el objetivo debe ser dengue grave o dengue total.
+- Llevar al experto: `AJUSTE`, `TIP_CAS`, y si el horizonte de prediccion de un mes es el adecuado dado que la etiqueta se comporta como un estado anual.

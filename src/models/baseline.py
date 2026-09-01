@@ -11,6 +11,16 @@ Referencia contra la cual se compara cualquier modelo posterior:
 El ultimo es el que importa: es lo que hace hoy una secretaria de salud
 mirando su grafica del canal endemico, sin modelo de por medio.
 
+Se reportan dos vistas de cada uno. El agregado sobre todos los meses, y el
+restringido a los inicios de brote. La segunda es la que dice si el sistema
+sirve: en el agregado la persistencia luce muy bien porque acierta las
+continuaciones, pero no detecta un solo inicio.
+
+Cada fold recalcula el canal, el SIR, la endemicidad y la etiqueta con
+aplicar_referencia usando solo los anios anteriores al que valida. El archivo
+de variables trae esas columnas calculadas hasta 2022, que es correcto para la
+prueba (2023-2025) pero seria fuga dentro de la validacion cruzada.
+
 La prueba solo se evalua con --incluir-prueba. Son 2023, 2024 y 2025 y se
 miran una vez, cuando ya este escogido el modelo.
 
@@ -28,8 +38,15 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.evaluation.metrics import metricas_alerta, metricas_por_grupo, tabla_comparativa
-from src.evaluation.splits import folds_temporales, resumen_folds, split_temporal
+from src.evaluation.metrics import (
+    inicios_vs_continuaciones,
+    metricas_alerta,
+    metricas_por_grupo,
+    tabla_comparativa,
+    tabla_inicios,
+)
+from src.evaluation.splits import folds_temporales, split_temporal
+from src.features.build_features import aplicar_referencia
 
 MUNICIPIOS = {"68001": "Bucaramanga", "76001": "Cali"}
 
@@ -45,15 +62,25 @@ def predicciones(df: pd.DataFrame) -> dict[str, np.ndarray]:
 
 def evaluar(df: pd.DataFrame, etiqueta: str) -> pd.DataFrame:
     y = df["brote"].to_numpy()
-    print(f"\n{etiqueta}: {len(df):,} meses, {y.sum():,} brotes ({y.mean() * 100:.1f}%)")
+    ini = df["es_inicio"].to_numpy()
+    print(f"\n{etiqueta}: {len(df):,} meses, {y.sum():,} brotes "
+          f"({y.mean() * 100:.1f}%), de ellos {ini.sum()} son inicio")
     if y.sum() == 0:
         print("  sin brotes, no hay nada que medir")
         return pd.DataFrame()
-    tabla = tabla_comparativa(
-        {nombre: metricas_alerta(y, pred) for nombre, pred in predicciones(df).items()}
-    )
+
+    preds = predicciones(df)
+    tabla = tabla_comparativa({n: metricas_alerta(y, p) for n, p in preds.items()})
     print(tabla.to_string())
+    print("\n  separando inicios de continuaciones")
+    print(imprimir_inicios(y, ini, preds))
     return tabla
+
+
+def imprimir_inicios(y, es_inicio, preds: dict[str, np.ndarray]) -> str:
+    return tabla_inicios(
+        {n: inicios_vs_continuaciones(y, p, es_inicio) for n, p in preds.items()}
+    ).to_string()
 
 
 def evaluar_por_municipio(df: pd.DataFrame, baseline: str) -> None:
@@ -68,23 +95,36 @@ def evaluar_por_municipio(df: pd.DataFrame, baseline: str) -> None:
 
 def evaluar_folds(df: pd.DataFrame) -> pd.DataFrame:
     """Cada baseline sobre la validacion de cada fold, y el agregado."""
-    acumulado = {nombre: {"y": [], "p": []} for nombre in predicciones(df.head(1))}
+    acumulado: dict[str, dict[str, list]] = {}
+    inicios: list[np.ndarray] = []
     filas = []
-    for anio, _, val in folds_temporales(df):
+
+    for anio, tr, va in folds_temporales(df):
+        d = aplicar_referencia(pd.concat([tr, va], ignore_index=True), ref_fin=anio - 1)
+        val = d[d["anio"] == anio]
         y = val["brote"].to_numpy()
-        for nombre, pred in predicciones(val).items():
+        preds = predicciones(val)
+        inicios.append(val["es_inicio"].to_numpy())
+
+        for nombre, pred in preds.items():
+            acumulado.setdefault(nombre, {"y": [], "p": []})
             acumulado[nombre]["y"].append(y)
             acumulado[nombre]["p"].append(pred)
-        if y.sum():
-            r = metricas_alerta(y, predicciones(val)["canal_endemico"])
-            filas.append({"fold": anio, "meses": len(y), "brotes": int(y.sum()),
-                          "sensibilidad": round(r["sensibilidad"], 3),
-                          "precision": round(r["precision"], 3),
-                          "falsas_alarmas": round(r["tasa_falsas_alarmas"], 3)})
 
-    if filas:
-        print("\ncanal_endemico fold por fold")
-        print(pd.DataFrame(filas).to_string(index=False))
+        fila = {"fold": anio, "ref": f"2007-{anio - 1}", "meses": len(y),
+                "brotes": int(y.sum()), "inicios": int(val["es_inicio"].sum())}
+        if y.sum():
+            r = metricas_alerta(y, preds["canal_endemico"])
+            fila |= {"sensibilidad": round(r["sensibilidad"], 3),
+                     "precision": round(r["precision"], 3),
+                     "falsas_alarmas": round(r["tasa_falsas_alarmas"], 3)}
+        filas.append(fila)
+
+    print("\ncanal_endemico fold por fold, con referencia expansiva")
+    print(pd.DataFrame(filas).to_string(index=False))
+    vacios = [f["fold"] for f in filas if f["brotes"] == 0]
+    if vacios:
+        print(f"  folds sin brotes, solo aportan falsas alarmas: {vacios}")
 
     print("\nagregado de todos los folds")
     tabla = tabla_comparativa({
@@ -92,6 +132,16 @@ def evaluar_folds(df: pd.DataFrame) -> pd.DataFrame:
         for nombre, d in acumulado.items()
     })
     print(tabla.to_string())
+
+    y_todos = np.concatenate(next(iter(acumulado.values()))["y"])
+    ini_todos = np.concatenate(inicios)
+    print("\n  separando inicios de continuaciones")
+    print(imprimir_inicios(
+        y_todos, ini_todos,
+        {n: np.concatenate(d["p"]) for n, d in acumulado.items()},
+    ))
+    print("\n  la persistencia no puede detectar un inicio: solo alerta si el mes")
+    print("  anterior ya era brote, y un inicio es justo cuando no lo era.")
     return tabla
 
 
@@ -123,10 +173,10 @@ def main(argv=None) -> int:
     particion = split_temporal(df)
     particion.resumen(col_objetivo="brote")
 
-    print("\nFolds de validacion cruzada temporal")
-    resumen_folds(particion.train, "brote")
-
-    evaluar(particion.train, "ENTRENAMIENTO COMPLETO")
+    evaluar(particion.train, "ENTRENAMIENTO, referencia fija 2007-2022")
+    print("  (solo como contexto: la etiqueta de estas filas se calculo con la")
+    print("   ventana completa, asi que las de 2015 conocen 2016 en adelante.")
+    print("   Los numeros que valen son los de los folds y los de la prueba.)")
     evaluar_folds(particion.train)
 
     if args.incluir_prueba:

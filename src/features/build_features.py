@@ -11,7 +11,8 @@ Diferencias con esa version:
   - lee el panel en parquet en vez de los CSV crudos, de modo que los meses
     sin casos existen como filas y los rezagos son meses calendario
   - el rolling se agrupa por municipio
-  - la endemicidad y el canal se calculan solo sobre la ventana de referencia
+  - la endemicidad y el canal se calculan solo sobre la ventana de referencia,
+    y los folds la recalculan con aplicar_referencia para no ver el futuro
   - se elimina anio_epidemia, que era un indice de tiempo
   - se agrega la etiqueta binaria de brote
 
@@ -27,15 +28,26 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-SERIE_OBJETIVO = "casos_grave"
+SERIE_OBJETIVO = "casos_clasico"
 
 REZAGOS = [1, 2, 3, 4, 6]
 VENTANA_ROLLING = 3
 
-# La referencia del canal y del SIR termina donde termina el entrenamiento
-# (src/evaluation/splits.py). Si se extiende, las variables miran la prueba.
+# Ventana de referencia por defecto del canal, el SIR y la endemicidad. Termina
+# donde termina el entrenamiento (src/evaluation/splits.py).
+#
+# Para validacion cruzada NO se usa este valor: cada fold recalcula con
+# aplicar_referencia(df, ref_fin=anio - 1), porque un p75 calculado hasta 2022
+# y usado para validar 2015 ya vio ocho anios de futuro, y como la etiqueta es
+# casos > p75, la fuga alcanza tambien a la etiqueta.
 REF_INICIO = 2007
 REF_FIN = 2022
+
+# Todo lo que depende de la ventana de referencia y hay que recalcular con ella.
+DERIVADAS_DE_REFERENCIA = [
+    "p25", "p75", "zona_canal_lag1", "sir_lag1", "es_endemico",
+    "brote", "brote_lag_1", "es_inicio",
+]
 
 # Criterio de municipio endemico de Decisiones_Metodologicas: al menos diez
 # anios con casos y doscientos casos acumulados, sobre la serie de dengue
@@ -130,17 +142,52 @@ def agregar_endemico(df: pd.DataFrame, ref: pd.DataFrame) -> pd.DataFrame:
 
 
 def agregar_etiqueta(df: pd.DataFrame) -> pd.DataFrame:
-    """Brote es superar el P75 historico del mismo mes."""
+    """
+    Brote es superar el P75 historico del mismo mes.
+
+    es_inicio marca el primer mes de cada brote. No es una variable predictora
+    porque depende del mes en curso: sirve para separar, al evaluar, la
+    deteccion de inicios de la de continuaciones.
+    """
     df["brote"] = (df[SERIE_OBJETIVO] > df["p75"]).astype(int)
     df["brote_lag_1"] = df.groupby("divipola")["brote"].shift(1).fillna(0).astype(int)
+    df["es_inicio"] = ((df["brote"] == 1) & (df["brote_lag_1"] == 0)).astype(int)
     return df
+
+
+def aplicar_referencia(
+    df: pd.DataFrame,
+    ref_fin: int = REF_FIN,
+    ref_inicio: int = REF_INICIO,
+) -> pd.DataFrame:
+    """
+    Calcula canal, SIR, endemicidad y etiqueta usando solo los anios de la
+    ventana de referencia.
+
+    Es el punto de entrada para los folds: pasar ref_fin igual al anio anterior
+    al que se va a validar garantiza que nada de lo derivado haya visto ese anio
+    ni los posteriores.
+    """
+    df = df.drop(columns=[c for c in DERIVADAS_DE_REFERENCIA if c in df.columns])
+    df = df.sort_values(["divipola", "anio", "mes"]).reset_index(drop=True)
+
+    ref = df[df["anio"].between(ref_inicio, ref_fin)]
+    if ref.empty:
+        raise ValueError(
+            f"No hay filas en la ventana de referencia {ref_inicio}-{ref_fin}"
+        )
+
+    df = agregar_canal(df, ref)
+    df = agregar_sir(df, ref)
+    df = agregar_endemico(df, ref)
+    return agregar_etiqueta(df)
 
 
 def columnas_predictoras(df: pd.DataFrame) -> list[str]:
     """Columnas numericas utilizables, sin identificadores ni datos del mes en curso."""
     prohibidas = {
         "divipola", "municipio", "departamento", "periodo",
-        "anio", "mes", "casos_grave", "casos_clasico", "brote",
+        "anio", "mes", "casos_grave", "casos_clasico", "brote", "es_inicio",
     }
     return [
         c for c in df.columns
@@ -170,16 +217,8 @@ def construir(panel: Path, salida: Path) -> pd.DataFrame:
     print("Estacionalidad")
     df = agregar_temporales(df)
 
-    ref = df[df["anio"].between(REF_INICIO, REF_FIN)]
-    if ref.empty:
-        raise ValueError(f"El panel no cubre {REF_INICIO}-{REF_FIN}")
-    print(f"Canal endemico y SIR sobre {REF_INICIO}-{REF_FIN}, objetivo {SERIE_OBJETIVO}")
-    df = agregar_canal(df, ref)
-    df = agregar_sir(df, ref)
-    df = agregar_endemico(df, ref)
-
-    print("Etiqueta de brote")
-    df = agregar_etiqueta(df)
+    print(f"Canal, SIR y etiqueta sobre {REF_INICIO}-{REF_FIN}, objetivo {SERIE_OBJETIVO}")
+    df = aplicar_referencia(df)
 
     salida.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(salida, index=False)
@@ -195,6 +234,8 @@ def resumen(df: pd.DataFrame) -> None:
     print(f"  predictoras         : {len(columnas_predictoras(df))}")
     print(f"  municipios endemicos: {endemicos:,} de {df['divipola'].nunique():,}")
     print(f"  meses en brote      : {df['brote'].mean() * 100:.1f}%")
+    print(f"  de ellos, inicios   : {df['es_inicio'].sum():,} de {df['brote'].sum():,}")
+    print(f"  meses sin casos     : {(df[SERIE_OBJETIVO] == 0).mean() * 100:.1f}%")
 
     for cod, nom in (("68001", "Bucaramanga"), ("76001", "Cali")):
         s = df[df["divipola"] == cod]
