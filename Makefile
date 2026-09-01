@@ -6,3 +6,6 @@ init:
 
 download: init
 	$(VENV)/bin/python data/download_datasets.py
+
+features: init
+	$(VENV)/bin/python src/features/build_features.py

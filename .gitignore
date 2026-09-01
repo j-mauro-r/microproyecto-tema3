@@ -1,6 +1,12 @@
+# Entornos
 .venv/
-dev.md
+__pycache__/
+*.pyc
+*.pyo
 .env
+dev.md
+
+# Datos crudos grandes (descargar con make download)
 data/raw/dengue/*.xlsx
 data/raw/dengue_grave/*.xlsx
 data/raw/google_earth_engine_divipola/*.csv
@@ -8,3 +14,21 @@ data/raw/dengue.csv
 data/raw/dengue_grave.csv
 data/raw/google_earth_engine.csv
 data/processed/bulk_processing.py
+
+# Archivos procesados demasiado grandes para GitHub (>100 MB)
+data/processed/gee_environment_semanal.csv
+
+# Modelos serializados (usar MLflow para versionado)
+model/*.pkl
+
+# MLflow local
+mlruns/
+mlartifacts/
+mlruns.db
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
