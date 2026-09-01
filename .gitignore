@@ -8,3 +8,10 @@ data/raw/dengue.csv
 data/raw/dengue_grave.csv
 data/raw/google_earth_engine.csv
 data/processed/bulk_processing.py
+
+# Salidas del pipeline. Se versionan con DVC, no con git.
+data/processed/*.parquet
+
+# Bytecode de Python
+__pycache__/
+*.py[cod]
