@@ -24,7 +24,7 @@ Kaggle: saballesteros/maia4331-2614-grupo19
         |  src/features/build_features.py
         v
    data/processed/features_mensual.parquet       35 MB
-   el mismo panel mas 35 variables predictoras y la etiqueta de brote
+   el mismo panel mas 40 variables predictoras y la etiqueta de brote
         |
         |  src/models/baseline.py   y los modelos que vengan
         v
@@ -55,7 +55,7 @@ python -m tests.test_features
 | `src/evaluation/splits.py` | Particion temporal y folds de validacion cruzada |
 | `src/evaluation/metrics.py` | Metricas de alerta, iguales para todos los modelos |
 | `src/models/baseline.py` | Los cuatro baselines de referencia |
-| `tests/` | 66 verificaciones, sin dependencias adicionales |
+| `tests/` | Verificacion de los modulos compartidos, sin dependencias adicionales |
 
 ---
 
@@ -106,13 +106,37 @@ Los rezagos son meses calendario. Con filas faltantes, `shift(1)` devuelve la fi
 
 `SERIE_OBJETIVO = "casos_clasico"`. Se cambio desde dengue grave el 1 de septiembre, por decision de equipo, porque la serie de graves quedo inservible despues del cambio de clasificacion de la OMS de 2009 (ver Limitaciones).
 
+### Encuadre: cada fila predice el futuro, no el presente
+
+Cada fila es un municipio y un mes t. Las variables son todo lo que se conoce al cerrar ese mes, y la etiqueta es si habra brote en **t + HORIZONTE**.
+
+```
+fila      = (municipio, mes t)
+variables = casos, clima, canal y estacionalidad hasta el mes t
+objetivo  = brote en el mes t + HORIZONTE
+```
+
+Mover el horizonte es cambiar una constante o pasar `--horizonte 3`. El encuadre anterior tenia las variables rezagadas y la etiqueta en el mes de la fila, lo que obligaba a rezagar variable por variable para mover la anticipacion.
+
+Dos consecuencias de este encuadre. El clima del mes en curso deja de ser trampa: si se predice t+1 parado en t, ese clima ya se conoce. Y `casos_clasico` del mes en curso pasa a ser variable legitima, no etiqueta.
+
 ### Etiqueta de brote
 
 Un mes es brote si los casos de ese municipio y ese mes superan el **P75 historico del mismo mes**. Es la zona de epidemia del canal endemico.
 
-`es_inicio` marca el primer mes de cada brote: es brote y el mes anterior no lo era. No es variable predictora, porque depende del mes en curso. Sirve para separar, al evaluar, la deteccion de inicios de la de continuaciones.
+| Columna | Que es |
+|---|---|
+| `brote` | el mes de la fila esta por encima del P75. Es **variable**, no etiqueta |
+| `objetivo` | si habra brote en t + HORIZONTE. Es la **etiqueta** |
+| `es_inicio` | el mes objetivo arranca el brote, o sea que el anterior no lo era |
+| `p75_objetivo` | el umbral del mes que se predice |
+| `zona_objetivo` | en que zona del umbral **del mes objetivo** caen los casos de hoy |
 
-P75 mensual resultante con referencia 2007-2022:
+`es_inicio` no es predictora: depende del mes objetivo. Sirve para separar, al evaluar, la deteccion de inicios de la de continuaciones.
+
+`zona_objetivo` existe porque el canal es estacional. Bucaramanga tiene P75 de 158 en diciembre y 378 en julio: estar en 300 casos es epidemia en uno y normal en el otro. La pregunta util no es "estoy por encima del umbral de este mes" sino "con lo que llevo hoy, cruzo el umbral del mes que viene". Sin esa distincion, el baseline del canal y el de persistencia son la misma regla.
+
+P75 mensual con referencia 2007-2022:
 
 ```
 Bucaramanga     219  244  320  366  315  340  378  283  309  268  232  158
@@ -134,6 +158,8 @@ entrenamiento : 2007 - 2022    con validacion cruzada de ventana expansiva
 prueba        : 2023 - 2025    se evalua una sola vez, al final
 ```
 
+La particion va sobre **`anio_objetivo`**, el mes que se predice, no sobre el mes de la fila. Con horizonte de un mes, la fila de diciembre de 2022 predice enero de 2023, que es prueba: particionar por el mes de la fila dejaria esa etiqueta del lado del entrenamiento.
+
 No hay un anio fijo de validacion. Los hiperparametros se escogen con `folds_temporales`: cada fold entrena con todos los anios anteriores y valida sobre uno solo, avanzando de 2015 a 2022.
 
 La razon es concreta: **2008, 2011, 2017, 2018, 2021 y 2022 no tienen ni un mes por encima del canal** en Bucaramanga ni en Cali. Un anio suelto de validacion puede quedarse sin positivos y dejar la seleccion de hiperparametros sin nada que medir. Los folds vacios igual sirven, porque miden falsas alarmas.
@@ -146,7 +172,9 @@ El canal, el SIR, la endemicidad y la etiqueta dependen de la ventana de referen
 
 Sin eso hay fuga: un P75 calculado hasta 2022 y usado para validar 2015 ya vio ocho anios de futuro, y como la etiqueta es `casos > p75`, la contaminacion alcanza tambien a la etiqueta. El archivo de variables trae esas columnas calculadas hasta 2022, que es correcto para la prueba (2023-2025) pero seria fuga dentro de la validacion cruzada.
 
-`tests/test_features.py::test_referencia_expansiva` lo fija: altera todos los casos de 2015 en adelante y verifica que el P75 con `ref_fin=2014` no se mueve, mas la contraprueba de que con la ventana completa si cambia.
+Al recalcular por fold hay que pasar los meses del anio validado aunque no se evaluen, porque la etiqueta sale de correr el brote hacia adelante: sin ellos, la ultima fila de cada municipio se queda sin objetivo y el fold pierde observaciones en silencio.
+
+`tests/test_features.py::test_nada_ve_el_futuro` es la red general. Corrompe **todas** las columnas numericas posteriores a un corte y exige que ninguna de las predictoras cambie en las filas anteriores, ni la etiqueta cuando el mes objetivo es anterior, mas la contraprueba de que despues del corte si cambian. No verifica columnas por nombre: verifica el invariante, asi que cubre sola cualquier variable que se agregue despues.
 
 ### Metricas
 
@@ -162,8 +190,8 @@ El PR-AUC esta implementado a mano para no depender de scikit-learn, que no esta
 |---|---|
 | `nunca_alerta` | no alerta nunca |
 | `siempre_alerta` | alerta todos los meses |
-| `persistencia` | alerta si el mes anterior fue brote |
-| `canal_endemico` | alerta si el mes anterior quedo por encima del P75 |
+| `persistencia` | alerta si el mes en curso ya esta en brote |
+| `canal_endemico` | alerta si los casos de hoy ya superan el umbral del mes que se predice |
 
 ---
 
@@ -171,12 +199,12 @@ El PR-AUC esta implementado a mano para no depender de scikit-learn, que no esta
 
 Agregado de los ocho folds, 192 meses, 27 brotes (14,1%):
 
-| | sensibilidad | precision | F1 | falsas alarmas |
-|---|---|---|---|---|
-| nunca_alerta | 0,000 | — | 0,000 | 0,000 |
-| siempre_alerta | 1,000 | 0,141 | 0,247 | 1,000 |
-| **persistencia** | 0,889 | 0,857 | **0,873** | 0,024 |
-| **canal_endemico** | 0,926 | 0,806 | 0,862 | 0,036 |
+| | sensibilidad | precision | F1 | falsas alarmas | inicios |
+|---|---|---|---|---|---|
+| nunca_alerta | 0,000 | — | 0,000 | 0,000 | 0 de 3 |
+| siempre_alerta | 1,000 | 0,141 | 0,247 | 1,000 | 3 de 3 |
+| **persistencia** | 0,889 | 0,857 | **0,873** | 0,024 | **0 de 3** |
+| **canal_endemico** | 0,926 | 0,806 | 0,862 | 0,036 | **2 de 3** |
 
 Fold por fold:
 
