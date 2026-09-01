@@ -18,3 +18,4 @@ mlflow.db
 data/processed/sivigila_*.csv
 data/processed/gee_*.csv
 data/figures/
+scripts/build_report.py
