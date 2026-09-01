@@ -13,8 +13,8 @@ import os
 import numpy as np
 import pandas as pd
 
-GRAVE_CSV   = "data/processed/sivigila_dengue_grave_consolidado.csv"
-CLASICO_CSV = "data/processed/sivigila_dengue_consolidado.csv"
+GRAVE_CSV   = "data/raw/dengue_grave.csv"
+CLASICO_CSV = "data/raw/dengue.csv"
 GEE_CSV     = "data/processed/gee_environment_mensual.csv"
 OUTPUT_CSV  = "data/processed/dengue_features_modelado.csv"
 
