@@ -110,9 +110,13 @@ microproyecto-tema3/
 ├── notebooks/              # Análisis exploratorio y experimentación
 │
 ├── src/                    # Código fuente del pipeline
+│   ├── data/               # Construcción del panel mensual desde los crudos
 │   ├── features/           # Construcción de variables y canal endémico
-│   ├── models/             # Entrenamiento y evaluación de modelos
+│   ├── evaluation/         # Partición temporal y métricas compartidas
+│   ├── models/             # Entrenamiento de modelos
 │   └── pipelines/          # Orquestación del pipeline completo
+│
+├── tests/                  # Verificación de los módulos compartidos
 │
 ├── api/                    # API de inferencia con FastAPI
 │   ├── main.py

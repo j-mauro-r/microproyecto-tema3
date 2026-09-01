@@ -21,3 +21,9 @@ data/figures/
 scripts/build_report.py
 scripts/rewrite_notebooks.py
 scripts/build_conclusiones.py
+# Salidas del pipeline. Se versionan con DVC, no con git.
+data/processed/*.parquet
+
+# Bytecode de Python
+__pycache__/
+*.py[cod]
