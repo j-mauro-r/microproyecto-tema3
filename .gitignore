@@ -8,3 +8,13 @@ data/raw/dengue.csv
 data/raw/dengue_grave.csv
 data/raw/google_earth_engine.csv
 data/processed/bulk_processing.py
+
+# MLflow local tracking
+mlruns/
+mlruns.db
+mlflow.db
+
+# Archivos procesados grandes (generados localmente)
+data/processed/sivigila_*.csv
+data/processed/gee_*.csv
+data/figures/
