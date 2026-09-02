@@ -62,7 +62,8 @@ REF_FIN = 2022
 # que borrar antes de recalcular.
 DERIVADAS = [
     "p25", "p75", "zona_canal", "sir", "es_endemico",
-    "brote", "objetivo", "es_inicio", "anio_objetivo", "mes_objetivo",
+    "brote", "objetivo", "casos_objetivo", "es_inicio",
+    "anio_objetivo", "mes_objetivo",
     "p25_objetivo", "p75_objetivo", "zona_objetivo",
 ]
 
@@ -71,7 +72,7 @@ DERIVADAS = [
 NO_PREDICTORAS = {
     "divipola", "municipio", "departamento", "periodo",
     "anio", "mes", "anio_objetivo", "mes_objetivo",
-    "objetivo", "es_inicio",
+    "objetivo", "casos_objetivo", "es_inicio",
 }
 
 # Criterio de municipio endemico de Decisiones_Metodologicas: al menos diez
@@ -204,9 +205,13 @@ def agregar_endemico(df: pd.DataFrame, ref: pd.DataFrame) -> pd.DataFrame:
 
 def agregar_objetivo(df: pd.DataFrame, horizonte: int = HORIZONTE) -> pd.DataFrame:
     """
-    brote     : el mes en curso supera el P75 historico. Es variable, no etiqueta.
-    objetivo  : si habra brote dentro de 'horizonte' meses. Es la etiqueta.
-    es_inicio : el mes objetivo arranca el brote, o sea que el anterior no lo era.
+    brote          : el mes en curso supera el P75 historico. Es variable.
+    objetivo       : si habra brote dentro de 'horizonte' meses. Es la etiqueta
+                     binaria.
+    casos_objetivo : cuantos casos habra en ese mes. Es la etiqueta de conteo,
+                     la que usa un modelo Poisson; el conteo predicho se vuelve
+                     alerta comparandolo contra p75_objetivo.
+    es_inicio      : el mes objetivo arranca el brote.
 
     anio_objetivo y mes_objetivo son el calendario del mes que se predice.
     Sobre ellos se parte el conjunto, no sobre anio.
@@ -215,6 +220,8 @@ def agregar_objetivo(df: pd.DataFrame, horizonte: int = HORIZONTE) -> pd.DataFra
         raise ValueError(f"El horizonte tiene que ser al menos 1, llego {horizonte}")
 
     df["brote"] = (df[SERIE_OBJETIVO] > df["p75"]).astype(int)
+
+    df["casos_objetivo"] = df.groupby("divipola")[SERIE_OBJETIVO].shift(-horizonte)
 
     grupo = df.groupby("divipola")["brote"]
     df["objetivo"] = grupo.shift(-horizonte)

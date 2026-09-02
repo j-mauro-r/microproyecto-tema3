@@ -45,7 +45,7 @@ from src.evaluation.metrics import (
     tabla_inicios,
 )
 from src.evaluation.splits import folds_temporales, split_temporal
-from src.features.build_features import HORIZONTE, aplicar_referencia
+from src.features.build_features import SERIE_OBJETIVO, aplicar_referencia
 
 MUNICIPIOS = {"68001": "Bucaramanga", "76001": "Cali"}
 COL_ANIO = "anio_objetivo"
@@ -68,6 +68,30 @@ def predicciones(df: pd.DataFrame) -> dict[str, np.ndarray]:
     }
 
 
+def puntajes(df: pd.DataFrame) -> dict[str, np.ndarray | None]:
+    """
+    Puntaje continuo de cada baseline, para que el PR-AUC sea comparable
+    contra el de los modelos.
+
+    Sin esto el PR-AUC solo existiria para los modelos y pareceria una ventaja
+    suya, cuando en realidad es que a los baselines no se les habia dado un
+    orden. El puntaje es el mismo que usa el modelo: cuantas veces el umbral se
+    espera alcanzar. La diferencia es que el baseline usa los casos de hoy y el
+    modelo usa los que predice.
+
+    persistencia y canal_endemico comparten puntaje a proposito: ordenan igual
+    y solo se diferencian en donde cortan. Que su PR-AUC coincida es correcto.
+    """
+    umbral = df["p75_objetivo"].where(df["p75_objetivo"] > 0, 1.0)
+    razon = (df[SERIE_OBJETIVO] / umbral).to_numpy()
+    return {
+        "nunca_alerta": None,
+        "siempre_alerta": None,
+        "persistencia": razon,
+        "canal_endemico": razon,
+    }
+
+
 def imprimir_inicios(y, es_inicio, preds: dict[str, np.ndarray]) -> str:
     return tabla_inicios(
         {n: inicios_vs_continuaciones(y, p, es_inicio) for n, p in preds.items()}
@@ -84,7 +108,10 @@ def evaluar(df: pd.DataFrame, etiqueta: str) -> pd.DataFrame:
         return pd.DataFrame()
 
     preds = predicciones(df)
-    tabla = tabla_comparativa({n: metricas_alerta(y, p) for n, p in preds.items()})
+    sc = puntajes(df)
+    tabla = tabla_comparativa(
+        {n: metricas_alerta(y, p, sc[n]) for n, p in preds.items()}
+    )
     print(tabla.to_string())
     print("\n  separando inicios de continuaciones")
     print(imprimir_inicios(y, ini, preds))
@@ -118,6 +145,26 @@ def recalcular_fold(df: pd.DataFrame, anio: int, horizonte: int) -> pd.DataFrame
     )
 
 
+def filas_de_fold(df: pd.DataFrame, anio: int, horizonte: int) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Entrenamiento y validacion de un fold, con todo lo derivado recalculado.
+
+    Unico sitio donde se rebana un fold. Tenerlo en un solo lugar es a
+    proposito: recortar el panel por anio_objetivo antes de recalcular deja sin
+    etiqueta la ultima fila de cada municipio, y ese error ya se colo dos veces
+    por estar la logica repartida entre dos modulos.
+    """
+    d = recalcular_fold(df, anio, horizonte)
+    train = con_etiqueta(d[d[COL_ANIO] < anio])
+    val = con_etiqueta(d[d[COL_ANIO] == anio])
+
+    esperado = 12 * df["divipola"].nunique()
+    if len(val) not in (0, esperado):
+        print(f"  aviso: el fold {anio} tiene {len(val)} meses y deberia tener "
+              f"{esperado}. Revisa si el panel llega hasta diciembre de {anio}.")
+    return train, val
+
+
 def evaluar_folds(df: pd.DataFrame, horizonte: int) -> pd.DataFrame:
     """Cada baseline sobre la validacion de cada fold, y el agregado."""
     acumulado: dict[str, dict[str, list]] = {}
@@ -125,18 +172,19 @@ def evaluar_folds(df: pd.DataFrame, horizonte: int) -> pd.DataFrame:
     filas = []
 
     for anio, _, _ in folds_temporales(df, col_anio=COL_ANIO):
-        d = recalcular_fold(df, anio, horizonte)
-        val = con_etiqueta(d[d[COL_ANIO] == anio])
+        _, val = filas_de_fold(df, anio, horizonte)
         if val.empty:
             continue
         y = val["objetivo"].to_numpy()
         preds = predicciones(val)
         inicios.append(val["es_inicio"].to_numpy())
 
+        sc = puntajes(val)
         for nombre, pred in preds.items():
-            acumulado.setdefault(nombre, {"y": [], "p": []})
-            acumulado[nombre]["y"].append(y)
-            acumulado[nombre]["p"].append(pred)
+            a = acumulado.setdefault(nombre, {"y": [], "p": [], "s": []})
+            a["y"].append(y)
+            a["p"].append(pred)
+            a["s"].append(sc[nombre] if sc[nombre] is not None else np.full(len(y), np.nan))
 
         fila = {"fold": anio, "ref": f"2007-{anio - 1}", "meses": len(y),
                 "brotes": int(y.sum()), "inicios": int(val["es_inicio"].sum())}
@@ -154,8 +202,13 @@ def evaluar_folds(df: pd.DataFrame, horizonte: int) -> pd.DataFrame:
         print(f"  folds sin brotes, solo aportan falsas alarmas: {vacios}")
 
     print("\nagregado de todos los folds")
+    def score_de(d):
+        s = np.concatenate(d["s"])
+        return None if np.isnan(s).all() else s
+
     tabla = tabla_comparativa({
-        nombre: metricas_alerta(np.concatenate(d["y"]), np.concatenate(d["p"]))
+        nombre: metricas_alerta(np.concatenate(d["y"]), np.concatenate(d["p"]),
+                                score_de(d))
         for nombre, d in acumulado.items()
     })
     print(tabla.to_string())
