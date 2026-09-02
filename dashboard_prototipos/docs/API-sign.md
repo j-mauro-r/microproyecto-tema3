@@ -1,104 +1,60 @@
-# BIOMAC — Contrato de API para el dashboard
+# BIOMAC — Contrato de API para dashboard e inferencia operacional
 
-**Estado:** contrato objetivo para integración Dashboard ↔ FastAPI ↔ modelo  
-**Versión del contrato:** `1.1.0`  
-**Ruta:** `dashboard_prototipos/docs/API-sign.md`
+**Estado:** contrato objetivo  
+**Versión del contrato:** `2.0.0`  
+**Base path:** `/api/v2`  
+**Documentos relacionados:** `arquitectura.md`, `implementacion.md`, `plan.md`, `diccionario-de-datos.md`
 
-> Fuente de verdad técnica para la integración. Los valores de los ejemplos son ilustrativos y no representan resultados epidemiológicos reales.
+> Los ejemplos son ilustrativos. El backend nunca debe fabricar resultados epidemiológicos para completar el contrato.
 
----
+## 1. Alcance
 
-## 1. Alcance vigente
+La API cubre dos flujos distintos:
 
-BIOMAC estima **riesgo de exceso de dengue** para Bucaramanga (`68001`) y Cali (`76001`) con granularidad mensual y horizontes `T+1` y `T+2`.
+1. **Actualización mensual:** un analista carga un archivo válido; el backend prepara la entrada, ejecuta el Champion ya aprobado, persiste el resultado y devuelve el estado del run.
+2. **Consulta:** abrir el dashboard o presionar `Refresh` recupera la última predicción persistida sin volver a ejecutar el Champion.
 
-### Definición operacional vigente
+El entrenamiento, tuning, comparación, selección y promoción del Champion están fuera de este contrato.
 
-- La serie epidemiológica usada actualmente como **target cuantitativo** es `casos_clasico`.
-- `casos_grave` se conserva como **variable predictora**.
-- Las dos series son independientes y **no se suman**.
-- El producto comunica el resultado como **riesgo de exceso de dengue**; la API debe exponer explícitamente qué serie produjo el target para evitar ambigüedad.
-- El exceso se determina respecto al canal endémico del mes objetivo.
-- La arquitectura de modelado debe impedir data leakage: para un corte `t`, solo se usan datos disponibles hasta `t`.
+## 2. Principios
 
-### Salida principal
+- El dashboard presenta; no calcula features, canal, clase, threshold, probabilidad ni SHAP.
+- La carga mensual es el trigger normal de inferencia.
+- `Refresh` es read-only.
+- La API consume un Champion preexistente y versionado.
+- Una ejecución fallida no reemplaza la última predicción exitosa.
+- `probability` solo se informa si la salida del Champion es realmente probabilística.
+- T+1/T+2 solo se exponen cuando están soportados por el Champion.
+- No se utilizan datos posteriores al `reference_month`.
+- No se usan mocks como fallback ante errores.
 
-La salida mínima por horizonte es:
+## 3. Convenciones
 
-1. `EXCESO` / `NO_EXCESO`;
-2. mes objetivo;
-3. señal cuantitativa de riesgo producida realmente por el modelo;
-4. threshold/regla de decisión usada;
-5. trazabilidad del modelo y datos.
+- JSON: `snake_case`.
+- Mes: `YYYY-MM`.
+- Fecha/hora: ISO-8601 UTC.
+- DIVIPOLA: string de 5 dígitos.
+- Campos desconocidos en schemas JSON: rechazados cuando aplique (`extra="forbid"`).
+- `null`: dato contemplado pero no disponible/no aplicable.
+- Versionamiento: SemVer.
+- Upload: `multipart/form-data`.
+- Consultas: `application/json`.
 
-La implementación Poisson actual produce un **conteo esperado**, no una probabilidad calibrada. Por tanto, `probability` es opcional y solo puede informarse cuando el modelo desplegado la produzca mediante un método estadísticamente válido.
+## 4. Endpoints
 
----
+| Método | Ruta | Propósito | ¿Ejecuta Champion? |
+|---|---|---|---:|
+| GET | `/api/v2/health` | Salud de API y disponibilidad del Champion | No |
+| POST | `/api/v2/monthly-runs` | Procesar nueva carga mensual | **Sí** |
+| GET | `/api/v2/runs/{run_id}` | Consultar estado/trazabilidad de un run | No |
+| GET | `/api/v2/predictions/latest` | Última predicción exitosa | No |
+| GET | `/api/v2/predictions/history` | Historial persistido | No |
 
-## 2. Principios del contrato
-
-El frontend **no debe**:
-
-- construir features;
-- calcular P25/P50/P75;
-- determinar la zona endémica;
-- transformar un score en `EXCESO/NO_EXCESO`;
-- inventar casos futuros a partir de una probabilidad;
-- denominar SHAP a una importancia global o a coeficientes del modelo.
-
-FastAPI es la fuente de verdad para resultados epidemiológicos, inferencia, regla de decisión y metadata.
-
-El dashboard solo presenta la respuesta.
-
----
-
-## 3. Arquitectura esperada
-
-```text
-Dashboard BIOMAC
-      |
-      | HTTPS / JSON
-      v
-FastAPI
-      |
-      +--> validación Pydantic
-      +--> selección de ciudad y mes de referencia
-      +--> recuperación de datos hasta t
-      +--> construcción reproducible de features
-      +--> modelo T+1 / modelo T+2
-      +--> canal endémico
-      +--> metadata / métricas / explicación
-      |
-      v
-Respuesta versionada
-```
-
-La API debe encapsular rutas de archivos, serialización, MLflow, DVC y detalles internos del pipeline.
+No existe un endpoint de `Refresh` que ejecute inferencia.
 
 ---
 
-## 4. Convenciones
-
-- Base path: `/api/v1`
-- Content type: `application/json`
-- Mes: `YYYY-MM`
-- Fecha/hora: ISO-8601 UTC
-- DIVIPOLA: string de 5 dígitos
-- JSON: `snake_case`
-- Requests con campos desconocidos: rechazados (`extra="forbid"`)
-- `null`: dato contemplado pero no disponible/no aplicable
-- El consumidor no debe depender del orden de las claves JSON
-- Versionamiento del contrato: SemVer
-
----
-
-## 5. Endpoints
-
-### 5.1 Health
-
-```http
-GET /api/v1/health
-```
+## 5. `GET /api/v2/health`
 
 Respuesta `200`:
 
@@ -106,91 +62,181 @@ Respuesta `200`:
 {
   "status": "ok",
   "service": "biomac-api",
-  "api_version": "1.1.0",
-  "model_ready": true
+  "api_version": "2.0.0",
+  "champion_ready": true,
+  "storage_ready": true
 }
 ```
 
-### 5.2 Predicciones
-
-```http
-POST /api/v1/predictions
-Content-Type: application/json
-```
-
-Permite solicitar una o ambas ciudades y uno o ambos horizontes.
+`champion_ready=true` significa que el adapter puede acceder al Champion configurado y a su metadata mínima. No implica que se haya ejecutado una nueva predicción.
 
 ---
 
-## 6. Request
+## 6. `POST /api/v2/monthly-runs`
 
-### 6.1 Ejemplo
+### 6.1 Request
 
-```json
-{
-  "schema_version": "1.1.0",
-  "municipality_codes": ["68001", "76001"],
-  "reference_month": "2024-12",
-  "horizons": ["T+1", "T+2"],
-  "history_months": 36,
-  "include_explanations": true,
-  "include_prediction_history": false
-}
+`Content-Type: multipart/form-data`
+
+Campos:
+
+| Campo | Tipo | Req. | Regla |
+|---|---|---:|---|
+| `file` | file | Sí | formato/tamaño permitido; no vacío |
+| `reference_month` | string | Sí | `YYYY-MM`; nuevo corte a procesar |
+
+El endpoint es síncrono en el MVP: responde cuando el run termina en `COMPLETED` o falla de forma controlada. Si el tiempo de proceso exige asincronía en una fase posterior, `run_id` permitirá evolucionar a `202 + polling`.
+
+### 6.2 Flujo interno contractual
+
+```text
+RECEIVED
+→ VALIDATING
+→ PREPARING
+→ INFERENCING
+→ PERSISTING
+→ COMPLETED
 ```
 
-### 6.2 Reglas
+Ante fallo:
 
-1. `municipality_codes`: únicamente municipios soportados por el modelo desplegado.
-2. `reference_month`: mes considerado `Actual` para la inferencia.
-3. Ninguna feature puede incorporar información posterior a `reference_month`.
-4. Cada horizonte debe corresponder a un artefacto o estrategia de inferencia evaluada explícitamente para ese `H`.
-5. No se permite obtener `T+2` extrapolando visualmente `T+1`.
-6. Si faltan datos esenciales, la API responde error controlado; nunca sustituye silenciosamente con mocks.
-7. En producción, el frontend puede enviar por defecto el último corte válido; en modo histórico puede enviar un corte anterior.
+```text
+cualquier etapa → FAILED
+```
 
----
-
-## 7. Response
-
-### 7.1 Ejemplo
+### 6.3 Respuesta exitosa `201`
 
 ```json
 {
-  "schema_version": "1.1.0",
+  "schema_version": "2.0.0",
   "request_id": "d312a52d-ae4b-4df1-a568-778a998252b2",
-  "generated_at": "2026-09-02T02:30:00Z",
-  "reference_month": "2024-12",
+  "run": {
+    "run_id": "biomac-2026-08-a1b2c3d4",
+    "status": "COMPLETED",
+    "reference_month": "2026-08",
+    "created_at": "2026-09-02T18:30:00Z",
+    "completed_at": "2026-09-02T18:30:07Z",
+    "source_file": {
+      "original_name": "datos_agosto_2026.csv",
+      "sha256": "example-sha256",
+      "size_bytes": 183421
+    },
+    "champion": {
+      "name": "biomac-champion",
+      "version": "1.3.0",
+      "mlflow_run_id": "optional-run-id",
+      "output_type": "probability",
+      "supported_horizons": ["T+1", "T+2"],
+      "feature_contract_version": "1.0.0"
+    }
+  },
+  "prediction_snapshot": {
+    "generated_at": "2026-09-02T18:30:07Z",
+    "reference_month": "2026-08",
+    "forecasts": []
+  }
+}
+```
+
+`prediction_snapshot.forecasts` usa el mismo schema descrito en la sección 10.
+
+### 6.4 Idempotencia
+
+Clave lógica:
+
+```text
+reference_month + source_file.sha256 + champion.version
+```
+
+Una repetición idéntica debe recuperar/reconocer el resultado lógico existente o responder de forma consistente. Un archivo diferente para un periodo ya procesado no puede sobrescribir silenciosamente un resultado anterior.
+
+---
+
+## 7. `GET /api/v2/runs/{run_id}`
+
+Respuesta `200`:
+
+```json
+{
+  "schema_version": "2.0.0",
+  "request_id": "3c2d...",
+  "run": {
+    "run_id": "biomac-2026-08-a1b2c3d4",
+    "status": "COMPLETED",
+    "reference_month": "2026-08",
+    "stage": "PERSISTING",
+    "created_at": "2026-09-02T18:30:00Z",
+    "completed_at": "2026-09-02T18:30:07Z",
+    "source_file_sha256": "example-sha256",
+    "champion_version": "1.3.0",
+    "error": null
+  }
+}
+```
+
+Para `COMPLETED`, `stage` puede ser `null` o `COMPLETED`. Para `FAILED`, `error` debe indicar etapa y código.
+
+---
+
+## 8. `GET /api/v2/predictions/latest`
+
+### 8.1 Query params
+
+| Campo | Tipo | Req. | Valores |
+|---|---|---:|---|
+| `municipality_codes` | string repetible/csv | No | `68001`,`76001`; default ambas |
+| `horizons` | string repetible/csv | No | `T+1`,`T+2`; default ambas |
+| `history_months` | integer | No | `0..240`; default `36` |
+| `include_explanations` | boolean | No | default `true` |
+
+### 8.2 Semántica
+
+Devuelve el último snapshot cuyo run terminó `COMPLETED`.
+
+**No ejecuta preparación ni inferencia.** Este endpoint es la fuente para:
+- apertura inicial del dashboard;
+- botón `Refresh`;
+- actualización automática posterior a un upload exitoso.
+
+---
+
+## 9. `GET /api/v2/predictions/history`
+
+Filtros mínimos:
+- `municipality_codes`;
+- `horizon`;
+- `from_month`;
+- `to_month`;
+- `limit`;
+- `offset`.
+
+Devuelve snapshots persistidos, no backtesting reconstruido bajo demanda.
+
+---
+
+## 10. Schema de `PredictionSnapshot`
+
+```json
+{
+  "schema_version": "2.0.0",
+  "run_id": "biomac-2026-08-a1b2c3d4",
+  "generated_at": "2026-09-02T18:30:07Z",
+  "reference_month": "2026-08",
   "target_definition": {
     "business_target": "dengue_excess_risk",
     "target_series": "casos_clasico",
     "predictor_series": ["casos_grave"],
     "series_are_summed": false,
-    "excess_rule": "expected_or_observed_cases_above_target_month_endemic_threshold"
+    "excess_rule": "model_contract"
   },
-  "models": [
-    {
-      "horizon": "T+1",
-      "name": "biomac-poisson",
-      "version": "example-1.0.0",
-      "mlflow_run_id": "example-run-t1",
-      "trained_at": "2026-09-01T15:00:00Z",
-      "training_period": "2007-2022",
-      "test_period": "2023-2025",
-      "data_version": "example-dvc-rev",
-      "output_type": "expected_count"
-    },
-    {
-      "horizon": "T+2",
-      "name": "biomac-poisson",
-      "version": "example-1.0.0",
-      "mlflow_run_id": "example-run-t2",
-      "trained_at": "2026-09-01T15:20:00Z",
-      "training_period": "2007-2022",
-      "test_period": "2023-2025",
-      "data_version": "example-dvc-rev",
-      "output_type": "expected_count"
-    }
-  ],
+  "champion": {
+    "name": "biomac-champion",
+    "version": "1.3.0",
+    "mlflow_run_id": "optional-run-id",
+    "output_type": "probability",
+    "supported_horizons": ["T+1", "T+2"],
+    "feature_contract_version": "1.0.0"
+  },
   "forecasts": [
     {
       "municipality": {
@@ -200,13 +246,13 @@ Permite solicitar una o ambas ciudades y uno o ambos horizontes.
       },
       "data_quality": {
         "status": "complete",
-        "last_observed_month": "2024-12",
+        "last_observed_month": "2026-08",
         "epidemiological_completeness": 1.0,
         "climate_completeness": 0.96,
         "warnings": []
       },
       "current_status": {
-        "reference_month": "2024-12",
+        "reference_month": "2026-08",
         "observed_cases": 142,
         "p25": 92.0,
         "p50": 121.0,
@@ -217,43 +263,19 @@ Permite solicitar una o ambas ciudades y uno o ambos horizontes.
       "predictions": [
         {
           "horizon": "T+1",
-          "target_month": "2025-01",
+          "target_month": "2026-09",
           "label": "EXCESO",
           "model_output": {
-            "type": "expected_count",
-            "expected_cases": 236.4,
-            "probability": null,
-            "risk_score": 1.079
+            "type": "probability",
+            "probability": 0.78,
+            "expected_cases": null,
+            "risk_score": null
           },
           "decision_rule": {
-            "type": "p75_multiplier",
+            "type": "probability_threshold",
+            "probability_threshold": 0.61,
             "target_month_p75": 219.0,
-            "multiplier_k": 1.0,
-            "decision_threshold_cases": 219.0
-          },
-          "uncertainty": null,
-          "explanation": {
-            "available": false,
-            "method": null,
-            "scope": null,
-            "top_features": []
-          }
-        },
-        {
-          "horizon": "T+2",
-          "target_month": "2025-02",
-          "label": "NO_EXCESO",
-          "model_output": {
-            "type": "expected_count",
-            "expected_cases": 221.1,
-            "probability": null,
-            "risk_score": 0.906
-          },
-          "decision_rule": {
-            "type": "p75_multiplier",
-            "target_month_p75": 244.0,
-            "multiplier_k": 1.0,
-            "decision_threshold_cases": 244.0
+            "decision_threshold_cases": null
           },
           "uncertainty": null,
           "explanation": {
@@ -266,227 +288,68 @@ Permite solicitar una o ambas ciudades y uno o ambos horizontes.
       ],
       "history": [
         {
-          "month": "2024-12",
+          "month": "2026-08",
           "observed_cases": 142,
           "p25": 92.0,
           "p50": 121.0,
           "p75": 158.0,
           "is_excess": false
         }
-      ],
-      "evaluation": {
-        "scope": "municipality",
-        "evaluation_period": "2023-2025",
-        "sample_size": 36,
-        "recall": null,
-        "precision": null,
-        "f1": null,
-        "false_alarm_rate": null,
-        "outbreak_onsets": null,
-        "outbreak_onsets_detected": null
-      },
-      "prediction_history": [],
-      "decision_support": {
-        "alert_level": "VIGILANCIA",
-        "action_code": "REVIEW_AND_MONITOR",
-        "recommended_action": "Revisar la evolución epidemiológica y mantener vigilancia reforzada.",
-        "disclaimer": "Prototipo académico. No sustituye la vigilancia epidemiológica oficial ni una decisión sanitaria profesional."
-      }
-    }
-  ],
-  "data_sources": [
-    {
-      "name": "SIVIGILA dengue clásico",
-      "category": "epidemiological_target",
-      "cutoff_month": "2024-12"
-    },
-    {
-      "name": "SIVIGILA dengue grave",
-      "category": "epidemiological_predictor",
-      "cutoff_month": "2024-12"
-    },
-    {
-      "name": "ERA5 / Google Earth Engine",
-      "category": "climate",
-      "cutoff_month": "2024-12"
+      ]
     }
   ]
 }
 ```
 
----
+Los valores anteriores son únicamente ejemplos de estructura.
 
-## 8. Diccionario de datos — Request
+## 11. Reglas de campos críticos
 
-| Campo | Tipo | Req. | Restricciones | Significado |
-|---|---|---:|---|---|
-| `schema_version` | string | Sí | SemVer | Versión del contrato solicitada. |
-| `municipality_codes` | array[string] | Sí | 1–2 en esta fase | DIVIPOLA de municipios solicitados. |
-| `reference_month` | string | Sí | `YYYY-MM` | Mes considerado `Actual`. |
-| `horizons` | array[enum] | Sí | `T+1`, `T+2` | Horizontes a inferir. |
-| `history_months` | integer | No | `0..240`, default `36` | Historia a devolver. |
-| `include_explanations` | boolean | No | default `true` | Solicita explicación si existe. |
-| `include_prediction_history` | boolean | No | default `false` | Solicita inferencias históricas persistidas. |
+### `champion`
 
----
+Describe el artefacto aprobado utilizado para el run. La API **lee** esta metadata; no entrena ni promueve el modelo.
 
-## 9. Diccionario de datos — Response
+### `model_output`
 
-### 9.1 Raíz
+- `type=probability`: puede poblar `probability`.
+- `type=expected_count`: puede poblar `expected_cases`.
+- `risk_score`: solo si el Champion/mapper define un score válido.
+- un score nunca debe convertirse arbitrariamente a probabilidad.
 
-| Campo | Tipo | Nulable | Significado |
-|---|---|---:|---|
-| `schema_version` | string | No | Versión de respuesta. |
-| `request_id` | UUID | No | Trazabilidad de la solicitud. |
-| `generated_at` | datetime | No | Fecha/hora de inferencia. |
-| `reference_month` | string | No | Corte usado. |
-| `target_definition` | object | No | Define semánticamente y técnicamente el target. |
-| `models` | array | No | Artefacto usado por horizonte. |
-| `forecasts` | array | No | Resultado por municipio. |
-| `data_sources` | array | No | Fuentes realmente usadas. |
+### `decision_rule`
 
-### 9.2 `target_definition`
+La regla debe provenir del contrato/modelo aprobado. No se usa `0.50` por defecto.
 
-| Campo | Tipo | Nulable | Significado |
-|---|---|---:|---|
-| `business_target` | string | No | `dengue_excess_risk`. |
-| `target_series` | string | No | Serie sobre la que se define/modela actualmente el exceso: `casos_clasico`. |
-| `predictor_series` | array[string] | No | Otras series epidemiológicas usadas como features; incluye `casos_grave`. |
-| `series_are_summed` | boolean | No | Debe ser `false` con la definición vigente. |
-| `excess_rule` | string | No | Regla de exceso versionada. |
+### `explanation`
 
-### 9.3 `models[]`
+Para explicar una inferencia concreta:
+- `available=true`;
+- `scope=local`;
+- `method` explícito;
+- top features correspondientes exactamente a municipio + corte + horizonte.
 
-| Campo | Tipo | Nulable | Significado |
-|---|---|---:|---|
-| `horizon` | enum | No | `T+1` o `T+2`. |
-| `name` | string | No | Nombre lógico del modelo desplegado. |
-| `version` | string | No | Versión del artefacto. |
-| `mlflow_run_id` | string | Sí | Run de MLflow. |
-| `trained_at` | datetime | No | Entrenamiento del artefacto final. |
-| `training_period` | string | No | Periodo de entrenamiento. |
-| `test_period` | string | Sí | Evaluación final. |
-| `data_version` | string | Sí | Revisión/hash DVC. |
-| `output_type` | enum | No | `expected_count`, `probability` u otro tipo versionado. |
+Una importancia global no se etiqueta como SHAP local.
 
-### 9.4 `data_quality`
+### `data_quality`
 
-| Campo | Tipo | Nulable | Significado |
-|---|---|---:|---|
-| `status` | enum | No | `complete`, `partial`, `degraded`. |
-| `last_observed_month` | string | No | Último mes realmente observado. |
-| `epidemiological_completeness` | float 0..1 | Sí | Completitud epidemiológica. |
-| `climate_completeness` | float 0..1 | Sí | Completitud climática. |
-| `warnings` | array[string] | No | Advertencias relevantes. |
-
-### 9.5 `current_status`
-
-| Campo | Tipo | Nulable | Significado |
-|---|---|---:|---|
-| `reference_month` | string | No | Mes actual consultado. |
-| `observed_cases` | number | No | Casos de la serie target vigente. |
-| `p25` | number | Sí | Percentil 25 del canal. |
-| `p50` | number | Sí | Mediana del canal. |
-| `p75` | number | No | Percentil 75. |
-| `ratio_to_p75` | float | No | `observed_cases / p75`. |
-| `endemic_zone` | enum | No | Categoría epidemiológica actual. |
-
-### 9.6 `predictions[]`
-
-| Campo | Tipo | Nulable | Significado |
-|---|---|---:|---|
-| `horizon` | enum | No | `T+1` / `T+2`. |
-| `target_month` | string | No | Mes futuro predicho. |
-| `label` | enum | No | `EXCESO` / `NO_EXCESO`. |
-| `model_output` | object | No | Salida nativa del modelo. |
-| `decision_rule` | object | No | Regla que genera la clase. |
-| `uncertainty` | object | Sí | Solo si existe método válido. |
-| `explanation` | object | No | Explicación local o `available=false`. |
-
-### 9.7 `model_output`
-
-| Campo | Tipo | Nulable | Significado |
-|---|---|---:|---|
-| `type` | enum | No | `expected_count` o `probability`. |
-| `expected_cases` | float | Sí | Conteo esperado si el modelo lo produce. |
-| `probability` | float 0..1 | Sí | Solo si existe probabilidad válida. |
-| `risk_score` | float | Sí | Score continuo comparable dentro del mismo modelo/horizonte. Para Poisson puede ser `expected_cases / p75`. |
-
-> `risk_score` **no es una probabilidad** y no debe mostrarse con símbolo `%`.
-
-### 9.8 `decision_rule`
-
-| Campo | Tipo | Nulable | Significado |
-|---|---|---:|---|
-| `type` | enum | No | Ej. `p75_multiplier` o `probability_threshold`. |
-| `target_month_p75` | float | Sí | P75 del mes objetivo. |
-| `multiplier_k` | float | Sí | Multiplicador aplicado al P75 en modelos de conteo. |
-| `decision_threshold_cases` | float | Sí | Umbral final en casos. |
-| `probability_threshold` | float 0..1 | Sí | Solo para modelos probabilísticos. |
-
-### 9.9 `explanation`
-
-| Campo | Tipo | Nulable | Significado |
-|---|---|---:|---|
-| `available` | boolean | No | Indica si existe explicación local válida. |
-| `method` | enum/string | Sí | Ej. `shap`, `linear_contribution`. |
-| `scope` | enum | Sí | Debe ser `local` para explicar una inferencia concreta. |
-| `top_features` | array | No | Factores principales. |
-
-Si solo existen coeficientes/importancias globales, deben exponerse en otra vista y nunca etiquetarse como explicación local.
-
-### 9.10 Métricas
-
-| Campo | Tipo | Nulable | Significado |
-|---|---|---:|---|
-| `recall` | float 0..1 | Sí | Sensibilidad de EXCESO. |
-| `precision` | float 0..1 | Sí | Precisión de alertas. |
-| `f1` | float 0..1 | Sí | Balance Precision/Recall. |
-| `false_alarm_rate` | float 0..1 | Sí | Tasa de falsas alarmas. |
-| `outbreak_onsets` | integer | Sí | Inicios reales observados. |
-| `outbreak_onsets_detected` | integer | Sí | Inicios detectados. |
-| `sample_size` | integer | Sí | Observaciones evaluadas. |
-
-Las métricas deben poder devolverse específicamente para Bucaramanga y Cali cuando existan suficientes observaciones.
+Resume la calidad de la entrada utilizada para ese run. Warnings no deben ocultarse en frontend.
 
 ---
 
-## 10. Historial de predicciones
+## 12. Estados y errores
 
-Cuando se implemente persistencia, cada inferencia histórica debe conservar como mínimo:
-
-```json
-{
-  "generated_at": "2025-01-02T12:00:00Z",
-  "reference_month": "2024-12",
-  "horizon": "T+2",
-  "target_month": "2025-02",
-  "label": "NO_EXCESO",
-  "expected_cases": 221.1,
-  "probability": null,
-  "risk_score": 0.906,
-  "model_version": "example-1.0.0",
-  "observed_label": null
-}
-```
-
-Esto soporta auditoría y `pronosticado vs. ocurrido`.
-
----
-
-## 11. Errores
-
-Formato único:
+Formato uniforme:
 
 ```json
 {
   "error": {
-    "code": "INSUFFICIENT_DATA",
-    "message": "No hay suficientes datos para construir las features del mes solicitado.",
-    "request_id": "d312a52d-ae4b-4df1-a568-778a998252b2",
+    "code": "INVALID_UPLOAD",
+    "message": "El archivo no contiene las columnas requeridas.",
+    "request_id": "d312...",
+    "run_id": "biomac-2026-08-a1b2c3d4",
+    "stage": "VALIDATING",
     "details": {
-      "municipality_code": "68001",
-      "reference_month": "2007-01"
+      "missing_columns": ["example"]
     }
   }
 }
@@ -495,92 +358,62 @@ Formato único:
 Códigos mínimos:
 
 - `400 INVALID_REQUEST`
-- `404 MUNICIPALITY_NOT_SUPPORTED`
-- `409 INFERENCE_NOT_AVAILABLE`
+- `400 INVALID_UPLOAD`
+- `404 RUN_NOT_FOUND`
+- `404 PREDICTION_NOT_FOUND`
+- `409 PERIOD_CONFLICT`
 - `422 INSUFFICIENT_DATA`
-- `503 MODEL_NOT_READY`
+- `422 CHAMPION_INPUT_INVALID`
+- `503 CHAMPION_NOT_READY`
+- `500 PREPARATION_FAILED`
+- `500 INFERENCE_FAILED`
+- `500 PERSISTENCE_FAILED`
 - `500 INTERNAL_ERROR`
 
-Nunca devolver mocks como fallback ante errores.
+Una respuesta de error no activa mocks.
 
----
-
-## 12. Seguridad mínima para esta fase
+## 13. Seguridad mínima
 
 1. HTTPS en ambientes expuestos.
-2. CORS mediante allowlist del dominio del dashboard y localhost de desarrollo.
-3. Validación estricta con Pydantic.
-4. Límites de tamaño de request y rate limiting básico si la API es pública.
-5. Logs con `request_id`, endpoint, latencia y código HTTP; no registrar secretos.
-6. API de inferencia read-only para el dashboard.
-7. No almacenar credenciales en Git.
-8. No incluir API keys secretas en código frontend: cualquier secreto enviado al navegador deja de ser secreto.
+2. CORS allowlist del dashboard y localhost de desarrollo.
+3. Validación estricta de archivos y parámetros.
+4. Límite de tamaño de upload configurable.
+5. Rechazar extensiones/tipos no permitidos.
+6. No confiar en el nombre del archivo como identificador.
+7. Hash SHA-256 de la carga para trazabilidad/idempotencia.
+8. No versionar uploads ni resultados runtime en Git.
+9. Logs con `request_id/run_id`, etapa, latencia y código; sin secretos ni datos innecesarios.
+10. En un despliegue público, el endpoint de upload debe quedar protegido. Autenticación completa puede implementarse en una fase posterior del proyecto académico, pero no debe asumirse que CORS equivale a autorización.
 
-Para esta fase académica no es obligatorio implementar autenticación de usuario si el servicio solo expone datos públicos agregados y se encuentra bajo infraestructura controlada. Si posteriormente se habilitan operaciones de carga, administración o datos sensibles, deberán protegerse con autenticación/autorización separada.
+## 14. Compatibilidad Dashboard ↔ API
 
----
+1. El frontend consume `/predictions/latest` al abrir y refrescar.
+2. El frontend llama `/monthly-runs` solo por acción explícita de actualización.
+3. Tras `COMPLETED`, la UI vuelve a consultar `latest` o utiliza el snapshot retornado y luego sincroniza con `latest`.
+4. Ante `FAILED`, la UI conserva el último snapshot exitoso y muestra el error de la actualización.
+5. La UI se adapta a `output_type`.
+6. Campos `null` se ocultan o muestran como no disponibles; nunca se reemplazan por mocks.
 
-## 13. Estructura FastAPI recomendada
+## 15. Frontera con el Champion
 
-```text
-api/
-├── app/
-│   ├── main.py
-│   ├── api/
-│   │   └── v1/
-│   │       └── predictions.py
-│   ├── schemas/
-│   │   ├── health.py
-│   │   ├── prediction_request.py
-│   │   └── prediction_response.py
-│   ├── services/
-│   │   ├── inference_service.py
-│   │   ├── feature_service.py
-│   │   └── history_service.py
-│   └── core/
-│       └── config.py
-└── tests/
-```
+El backend requiere del equipo de modelado:
+- artefacto ejecutable o salida materializada equivalente;
+- nombre/versión;
+- horizontes soportados;
+- contrato de features/entrada;
+- tipo de salida;
+- regla/threshold;
+- método de explicación si existe.
 
-Separar schemas, rutas y lógica de inferencia facilita pruebas, empaquetamiento y sustitución de modelos.
-
----
-
-## 14. Reglas de compatibilidad Dashboard ↔ API
-
-1. El dashboard consume el contrato, no el tipo concreto de modelo.
-2. `probability` puede ser `null`; la UI debe adaptarse al tipo de salida.
-3. `expected_cases` solo puede mostrarse si proviene directamente del modelo/backend.
-4. Para Poisson, el dashboard puede mostrar conteo esperado, P75 del mes objetivo y `risk_score`; nunca debe transformar `risk_score` en porcentaje.
-5. Si un futuro champion es clasificador probabilístico, podrá usar `probability` y `probability_threshold` sin cambiar la estructura principal.
-6. T+1 y T+2 deben identificar su propio modelo/run/versión cuando sean artefactos distintos.
-7. `SHAP` solo puede mostrarse cuando `explanation.method="shap"` y `scope="local"`.
-8. El frontend no debe utilizar datos posteriores al corte para el modo histórico.
-
----
-
-## 15. Dependencias antes de habilitar datos reales
-
-La API real no debe declararse lista hasta contar con:
-
-- definición versionada del target;
-- artefactos finales desplegables para T+1 y T+2;
-- selección explícita del modelo/champion por horizonte;
-- features reproducibles sin leakage;
-- canal endémico reproducible;
-- métricas globales y por ciudad cuando sean estadísticamente defendibles;
-- DVC/versión de datos alineada;
-- estrategia explícita para probabilidades, si se quieren mostrar;
-- explicación local válida, si se quiere mostrar;
-- pruebas unitarias y contract tests de FastAPI.
-
----
+Si falta alguno de estos elementos, la API debe reportar la dependencia; no debe inferirla por conveniencia.
 
 ## 16. Fuente de verdad
 
 Ante discrepancias:
 
-1. `plan.md` define el comportamiento funcional esperado.
-2. Este archivo define la interfaz técnica Dashboard ↔ FastAPI.
-3. El pipeline/modelo define qué salidas pueden producirse realmente.
-4. La UI nunca debe simular una salida faltante para aparentar cumplimiento.
+1. `arquitectura.md` define responsabilidades y flujo.
+2. `plan.md` define comportamiento funcional/visual.
+3. este archivo define el contrato HTTP.
+4. `diccionario-de-datos.md` define semántica de campos.
+5. el Champion define qué salidas ML existen realmente.
+6. la UI nunca simula una salida faltante.
