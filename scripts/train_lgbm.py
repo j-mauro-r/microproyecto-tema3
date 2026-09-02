@@ -25,7 +25,8 @@ MODEL_DIR  = os.path.join(ROOT, "model")
 
 PROHIBIDAS = {
     "divipola", "municipio", "departamento", "periodo",
-    "anio", "mes", "casos_grave", "casos_clasico", "brote", "es_inicio",
+    "anio", "mes", "casos_grave", "casos_clasico", "es_inicio",
+    "objetivo", "casos_objetivo", "anio_objetivo", "mes_objetivo",
     "__target_t2",
 }
 TRAIN_END = 2023
@@ -65,10 +66,11 @@ def main():
     df = pd.read_parquet(DATA_PATH)
 
     if H == 2:
-        df, target_col = make_t2_target(df, "brote")
+        df, target_col = make_t2_target(df, "objetivo")
     else:
-        target_col = "brote"
+        target_col = "objetivo"
 
+    df = df[df[target_col].notna()].copy()
     feats = feature_cols(df)
 
     train = df[df["anio"] <= TRAIN_END].copy()
@@ -143,7 +145,11 @@ def main():
     os.makedirs(MODEL_DIR, exist_ok=True)
     with open(model_file, "wb") as f:
         pickle.dump(model, f)
+    canonical = os.path.join(MODEL_DIR, "lgbm_clasico.pkl")
+    with open(canonical, "wb") as f:
+        pickle.dump(model, f)
     print(f"Modelo guardado: {model_file}")
+    print(f"Copia canónica:  {canonical}")
 
 
 if __name__ == "__main__":

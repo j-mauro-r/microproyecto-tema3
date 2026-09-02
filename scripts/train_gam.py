@@ -32,13 +32,14 @@ GAM_FEATURES = [
     "casos_clasico_lag_2",
     "casos_clasico_roll3",
     "brote_lag_1",
-    "zona_canal_lag1",
+    "zona_canal",
     "mes_sin",
     "mes_cos",
     "p75",
     "casos_grave_lag_1",
     "es_endemico",
 ]
+GAM_SAMPLE = 50_000  # GAM scales poorly with n; use subsample
 
 EXPERIMENT = "dengue-brote-clasico"
 
@@ -56,9 +57,11 @@ def main():
     df = pd.read_parquet(DATA_PATH)
 
     if H == 2:
-        df, target_col = make_t2_target(df, "brote")
+        df, target_col = make_t2_target(df, "objetivo")
     else:
-        target_col = "brote"
+        target_col = "objetivo"
+
+    df = df[df[target_col].notna()].copy()
 
     feats = [ft for ft in GAM_FEATURES if ft in df.columns]
     missing = set(GAM_FEATURES) - set(feats)
@@ -73,12 +76,15 @@ def main():
     test_divipola = test["divipola"].astype(str)
     y_ini_te      = test["es_inicio"].values if "es_inicio" in test.columns else None
 
-    X_tr  = tr[feats].fillna(0).values;   y_tr  = tr[target_col].values
-    X_val = val[feats].fillna(0).values;  y_val = val[target_col].values
-    X_te  = test[feats].fillna(0).values; y_te  = test[target_col].values
+    # Use subsample for GAM (scales poorly with n)
+    rng = np.random.default_rng(42)
+    idx = rng.choice(len(tr), size=min(GAM_SAMPLE, len(tr)), replace=False)
+    X_tr  = tr[feats].fillna(0).values[idx];  y_tr  = tr[target_col].values[idx]
+    X_val = val[feats].fillna(0).values;       y_val = val[target_col].values
+    X_te  = test[feats].fillna(0).values;      y_te  = test[target_col].values
 
-    for name, y in [("train", y_tr), ("val", y_val), ("test", y_te)]:
-        print(f"  {name:6s}: {len(y):>7,} filas | {y.mean()*100:.1f}% brote")
+    for name, y in [("train (sample)", y_tr), ("val", y_val), ("test", y_te)]:
+        print(f"  {name:20s}: {len(y):>7,} filas | {y.mean()*100:.1f}% objetivo")
 
     # Terminos: spline para continuas, lineal para binarias, factor para categorica
     def make_terms(feats):
@@ -86,7 +92,7 @@ def main():
         for i, ft in enumerate(feats):
             if ft in ("brote_lag_1", "es_endemico"):
                 pieces.append(l(i))
-            elif ft == "zona_canal_lag1":
+            elif ft == "zona_canal":
                 pieces.append(f(i))
             else:
                 pieces.append(s(i, n_splines=8))
@@ -108,9 +114,10 @@ def main():
             "lam": args.lam,
             "horizonte": H,
             "output_type": "probability",
+            "gam_sample": GAM_SAMPLE,
         })
 
-        print(f"\nEntrenando GAM con lam={args.lam} ...")
+        print(f"\nEntrenando GAM con lam={args.lam} (n={len(y_tr):,}) ...")
         model = LogisticGAM(terms, lam=args.lam).fit(X_tr, y_tr)
 
         prob_val = model.predict_proba(X_val)
@@ -149,6 +156,10 @@ def main():
 
         os.makedirs(MODEL_DIR, exist_ok=True)
         with open(model_file, "wb") as fh:
+            pickle.dump({"model": model, "features": feats,
+                         "best_threshold": best_thr, "horizonte": H}, fh)
+        canonical = os.path.join(MODEL_DIR, "gam_clasico.pkl")
+        with open(canonical, "wb") as fh:
             pickle.dump({"model": model, "features": feats,
                          "best_threshold": best_thr, "horizonte": H}, fh)
         mlflow.log_artifact(model_file, artifact_path="model")
