@@ -19,3 +19,5 @@ __pycache__/
 # Llaves privadas. No deberian estar en el repo, ni siquiera ignoradas.
 *.pem
 *.key
+
+mlruns/
