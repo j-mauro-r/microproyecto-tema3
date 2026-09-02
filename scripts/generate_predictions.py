@@ -81,32 +81,12 @@ def main():
                   f"Entrena con: python scripts/train_clasico_model.py --horizonte {horizonte}")
             continue
 
-        # T+2 needs target shifted by 2; approximate by using objetivo lookahead from df
-        if horizonte == 2:
-            # Build T+2 label: brote at t+2 = objetivo of row 2 months forward per municipio
-            tc2_map = (
-                df[["divipola", "anio", "mes", TARGET]]
-                .copy()
-                .rename(columns={TARGET: "objetivo_t2"})
-            )
-            # Shift 2 months forward: match current (div, anio, mes) to future (div, anio+2m, mes+2m)
-            def add_months(row, n):
-                d = date(int(row["anio"]), int(row["mes"]), 1) + relativedelta(months=n)
-                return d.year, d.month
-            test_cities = test_cities.copy()
-            future_keys = test_cities.apply(
-                lambda r: add_months(r, 2), axis=1, result_type="expand"
-            ).rename(columns={0: "f_anio", 1: "f_mes"})
-            test_cities = pd.concat([test_cities.reset_index(drop=True), future_keys], axis=1)
-            test_cities = test_cities.merge(
-                tc2_map[["divipola", "anio", "mes", "objetivo_t2"]],
-                left_on=["divipola", "f_anio", "f_mes"],
-                right_on=["divipola", "anio", "mes"],
-                how="left", suffixes=("", "_fwd"),
-            )
-            target_col_h = "objetivo_t2"
-        else:
-            target_col_h = TARGET
+        # Build a lookup: (divipola_str, anio, mes) -> objetivo for observed_label
+        target_lookup = {
+            (str(int(r["divipola"])), int(r["anio"]), int(r["mes"])): int(r[TARGET])
+            for _, r in df.iterrows()
+            if pd.notna(r[TARGET]) and pd.notna(r["divipola"])
+        }
 
         # Compute threshold from val if not available
         if thr is None:
@@ -116,7 +96,8 @@ def main():
         probs_raw = model.predict_proba(X_cities)[:, 1]
         probs = calibrator.transform(probs_raw) if calibrator is not None else probs_raw
 
-        for i, (_, row) in enumerate(test_cities.iterrows()):
+        tc_reset = test_cities.reset_index(drop=True)
+        for i, row in tc_reset.iterrows():
             div    = str(int(row["divipola"]))
             anio   = int(row["anio"])
             mes    = int(row["mes"])
@@ -126,8 +107,8 @@ def main():
 
             prob  = float(probs[i])
             label = "EXCESO" if prob >= thr else "NO_EXCESO"
-            obs_val = row.get(target_col_h)
-            observed_label = ("EXCESO" if int(obs_val) == 1 else "NO_EXCESO") if pd.notna(obs_val) else None
+            obs_val = target_lookup.get((div, target_date.year, target_date.month))
+            observed_label = ("EXCESO" if obs_val == 1 else "NO_EXCESO") if obs_val is not None else None
 
             records.append({
                 "generated_at":         GENERATED_AT,
