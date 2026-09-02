@@ -137,7 +137,7 @@ def main():
             log_full_metrics(m_c, prefix=f"test_{div}")
             print_metrics(m_c, f"{city} ({div})")
 
-        mlflow.lightgbm.log_model(model, name="model",
+        mlflow.lightgbm.log_model(model, artifact_path="model",
                                   registered_model_name=registered_name)
 
     os.makedirs(MODEL_DIR, exist_ok=True)

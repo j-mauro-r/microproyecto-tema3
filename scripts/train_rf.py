@@ -126,7 +126,7 @@ def main():
             print_metrics(m_c, f"{city} ({div})")
 
         mlflow.sklearn.log_model(
-            model, name="model",
+            model, artifact_path="model",
             registered_model_name=registered_name,
             skops_trusted_types=["sklearn.ensemble._forest.RandomForestClassifier"],
         )

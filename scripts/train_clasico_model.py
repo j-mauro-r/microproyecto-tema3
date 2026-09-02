@@ -135,7 +135,7 @@ def main():
             log_full_metrics(m_c, prefix=f"test_{div}")
             print_metrics(m_c, f"{city} ({div})")
 
-        mlflow.xgboost.log_model(model, name="model",
+        mlflow.xgboost.log_model(model, artifact_path="model",
                                  registered_model_name=registered_name,
                                  input_example=X_tr[:5])
 
