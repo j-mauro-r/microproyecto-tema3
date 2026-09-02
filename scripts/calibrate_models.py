@@ -81,7 +81,7 @@ def main():
             pickle.dump(out, fh)
         print(f"  -> {out_path}")
 
-    # ── T+2: XGBoost only ────────────────────────────────────────────────────
+    # ── T+2: XGBoost and LightGBM ────────────────────────────────────────────
     df_t2   = pd.read_parquet(DATA_PATH)
     df_t2, t2_col = make_t2_target(df_t2, "objetivo")
     val_t2  = df_t2[(df_t2["anio"] >= TRAIN_END - 1) & (df_t2["anio"] <= TRAIN_END)].copy()
@@ -123,6 +123,33 @@ def main():
         print(f"  -> {out_path_t2}")
     else:
         print("xgb_clasico_T2.pkl no encontrado — omitido.")
+
+    lgbm_t2_path = os.path.join(MODEL_DIR, "lgbm_clasico_T2.pkl")
+    if os.path.exists(lgbm_t2_path):
+        with open(lgbm_t2_path, "rb") as fh:
+            raw_lt2 = pickle.load(fh)
+        feats_lt2 = list(raw_lt2.feature_names_in_)
+        X_val_lt2 = val_t2[feats_lt2].fillna(0)
+        y_val_lt2 = val_t2[t2_col].astype(int).values
+        prob_raw_lt2  = raw_lt2.predict_proba(X_val_lt2)[:, 1]
+        brier_pre_lt2 = brier_score_loss(y_val_lt2, prob_raw_lt2)
+        iso_lt2 = IsotonicRegression(out_of_bounds="clip")
+        iso_lt2.fit(prob_raw_lt2, y_val_lt2)
+        prob_cal_lt2   = iso_lt2.transform(prob_raw_lt2)
+        brier_post_lt2 = brier_score_loss(y_val_lt2, prob_cal_lt2)
+        best_thr_lt2   = compute_threshold(y_val_lt2, prob_cal_lt2)
+        print(f"lgbm_clasico_T2: Brier {brier_pre_lt2:.4f} -> {brier_post_lt2:.4f}  |  umbral={best_thr_lt2:.2f}")
+        out_lt2 = {
+            "model": raw_lt2, "calibrator": iso_lt2, "features": feats_lt2,
+            "calibrated": True, "method": "isotonic",
+            "brier_before": brier_pre_lt2, "brier_after": brier_post_lt2,
+            "best_threshold": best_thr_lt2,
+        }
+        with open(os.path.join(MODEL_DIR, "lgbm_clasico_T2_calibrated.pkl"), "wb") as fh:
+            pickle.dump(out_lt2, fh)
+        print(f"  -> {os.path.join(MODEL_DIR, 'lgbm_clasico_T2_calibrated.pkl')}")
+    else:
+        print("lgbm_clasico_T2.pkl no encontrado — omitido.")
 
 
 if __name__ == "__main__":

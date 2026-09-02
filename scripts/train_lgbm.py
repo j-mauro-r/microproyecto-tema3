@@ -145,11 +145,12 @@ def main():
     os.makedirs(MODEL_DIR, exist_ok=True)
     with open(model_file, "wb") as f:
         pickle.dump(model, f)
-    canonical = os.path.join(MODEL_DIR, "lgbm_clasico.pkl")
-    with open(canonical, "wb") as f:
-        pickle.dump(model, f)
     print(f"Modelo guardado: {model_file}")
-    print(f"Copia canónica:  {canonical}")
+    if H == 1:
+        canonical = os.path.join(MODEL_DIR, "lgbm_clasico.pkl")
+        with open(canonical, "wb") as f:
+            pickle.dump(model, f)
+        print(f"Copia canónica:  {canonical}")
 
 
 if __name__ == "__main__":
