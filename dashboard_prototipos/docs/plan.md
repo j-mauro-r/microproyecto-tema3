@@ -1,197 +1,188 @@
 # BIOMAC — Plan funcional del dashboard
 
 **Estado:** especificación funcional objetivo  
-**Versión:** `1.3.0`  
-**Ámbito:** dashboard BIOMAC
-
-> Fuente de verdad funcional. Debe mantenerse alineada con `API-sign.md`, con las salidas reales del pipeline/modelo y con la implementación visual del dashboard.
+**Versión:** `2.0.0`  
+**Ámbito:** dashboard BIOMAC + flujo operacional de actualización mensual  
+**Arquitectura:** `arquitectura.md`
 
 ## 1. Alcance vigente
 
-BIOMAC estima **riesgo de exceso de dengue** para Bucaramanga y Cali, con granularidad mensual y horizontes T+1/T+2.
+BIOMAC presenta riesgo de exceso de dengue para Bucaramanga (`68001`) y Cali (`76001`), con granularidad mensual y horizontes T+1/T+2.
 
-Definición vigente del pipeline:
+Definiciones vigentes documentadas:
 - `casos_clasico` es la serie objetivo;
 - `casos_grave` es predictor epidemiológico;
-- las dos series **no se suman**;
-- la clase es `EXCESO / NO_EXCESO`;
-- el frontend no calcula features, canal, clase ni thresholds.
+- no se suman;
+- clase `EXCESO / NO_EXCESO`;
+- el frontend no calcula features, canal, clase, threshold, probabilidad ni SHAP.
 
-La UI debe presentar únicamente salidas reales del modelo. Si el champion produce una probabilidad calibrada, puede mostrarse como porcentaje; si produce otro tipo de salida, debe mostrarse con su unidad explícita. Nunca se deben fabricar probabilidades, conteos, SHAP o thresholds en frontend.
+### Nueva decisión operacional
 
-## 2. Convenciones
+La inferencia se dispara cuando un analista carga un **nuevo periodo mensual válido**.
 
-Estados funcionales: `EXISTE`, `PARCIAL`, `MOCK`, `PENDIENTE`, `CORREGIR`, `ELIMINAR`.  
+```text
+Actualizar datos
+→ API
+→ validación/preparación
+→ Champion aprobado
+→ persistencia
+→ dashboard
+```
+
+Abrir el dashboard o presionar `Refresh` consulta la última predicción persistida y **no ejecuta el Champion**.
+
+El entrenamiento, tuning, comparación, selección y promoción del Champion permanecen fuera del alcance de este plan.
+
+## 2. Módulos
+
+- **ALERTA Y PRONÓSTICO:** pantalla principal de decisión.
+- **HISTÓRICO Y EVALUACIÓN:** predicciones anteriores y contraste posterior.
+- **MODELO Y DATOS:** calidad, fuentes, Champion y trazabilidad.
+- **ACTUALIZACIÓN MENSUAL:** flujo iniciado desde una acción compacta `Actualizar datos`; puede implementarse como modal/panel y no requiere una pantalla principal adicional en el MVP.
+
+## 3. Estados funcionales
+
+`EXISTE`, `PARCIAL`, `MOCK`, `PENDIENTE`, `CORREGIR`, `ELIMINAR`.
+
 Valor: `ALTO`, `MEDIO`.
 
-Cobertura visual:
-- `PRESENTE — PRINCIPAL`: ya aparece gráficamente en la pantalla principal.
-- `PRESENTE — MEJORAR`: existe gráficamente, pero debe corregirse o completarse.
-- `AGREGAR — PRINCIPAL`: falta y debe incorporarse en la pantalla principal.
-- `AGREGAR — MENÚ: HISTÓRICO`: debe vivir en una vista secundaria de histórico/evaluación.
-- `AGREGAR — MENÚ: MODELO Y DATOS`: debe vivir en una vista secundaria de trazabilidad, calidad y fuentes.
-- `NO VISUAL — INFRAESTRUCTURA`: requisito técnico que habilita la UI, pero no necesita un panel permanente.
+## 4. Especificación funcional objetivo — 37 funcionalidades
 
-Módulos de navegación:
-- `PANTALLA PRINCIPAL`: Alerta y pronóstico; concentra la decisión epidemiológica.
-- `HISTÓRICO Y EVALUACIÓN`: seguimiento de predicciones anteriores y contraste contra lo ocurrido.
-- `MODELO Y DATOS`: calidad, fuentes, trazabilidad, desempeño e infraestructura analítica.
+| ID | Funcionalidad | Propósito | Estado | Valor | Ubicación |
+|---|---|---|---|---|---|
+| F01 | Encabezado operacional | Ciudad, corte, alcance, granularidad, horizontes y actualización. | PARCIAL | ALTO | Principal |
+| F02 | Selector de ciudad | Bucaramanga/Cali actualizando la vista. | EXISTE | ALTO | Principal |
+| F03 | Fecha de corte | Mostrar último mes observado usado. | PARCIAL | ALTO | Principal |
+| F04 | Calidad y frescura | Completitud, retrasos y warnings. | PENDIENTE | ALTO | Principal compacto + Modelo y datos |
+| F05 | Alerta principal T+2 | Clase real del Champion/backend. | MOCK | ALTO | Principal |
+| F06 | Señal cuantitativa T+2 | Output nativo válido; probabilidad solo si aplica. | CORREGIR | ALTO | Principal |
+| F07 | Incertidumbre | Mostrar solo si existe método válido. | MOCK | ALTO | Principal |
+| F08 | Evolución T+1→T+2 | Comparar ambos horizontes reales. | MOCK | ALTO | Principal |
+| F09 | Regla/threshold | Regla real y versionada. | CORREGIR | ALTO | Principal |
+| F10 | Estado frente al canal | Casos actuales, P75 y relación. | PARCIAL | ALTO | Principal |
+| F11 | Clasificación actual | Zona epidemiológica actual separada de predicción. | PARCIAL | ALTO | Principal |
+| F12 | Comparativo de ciudades | T+1/T+2 para Bucaramanga/Cali. | MOCK | ALTO | Principal |
+| F13 | Histórico + canal | Observados + percentiles disponibles + excesos. | PARCIAL | ALTO | Principal |
+| F14 | Observado vs futuro | Separar historia de T+1/T+2. | EXISTE | ALTO | Principal |
+| F15 | Eliminar proyección artificial | No inventar casos futuros desde probabilidad. | ELIMINAR | ALTO | Principal |
+| F16 | Comparativa de riesgo | Comparar output real y regla por horizonte/ciudad. | CORREGIR | ALTO | Principal |
+| F17 | Explicabilidad local | Explicar inferencia concreta cuando exista. | MOCK | ALTO | Principal |
+| F18 | Impulsores epidemiológicos | Mostrar factores epidemiológicos reales. | MOCK | ALTO | Principal |
+| F19 | Impulsores climáticos | Mostrar clima solo si fue usado y contribuye. | MOCK | MEDIO | Principal |
+| F20 | Insights priorizados | Máximo tres mensajes derivados de resultados reales. | MOCK | ALTO | Principal |
+| F21 | Orientación de acción | Apoyo no prescriptivo, separado del modelo. | MOCK | ALTO | Principal |
+| F22 | Semántica de alerta | Texto+icono+color; actual vs futuro. | PARCIAL | MEDIO | Principal |
+| F23 | Historial de pronósticos | Runs/snapshots previos persistidos. | PENDIENTE | ALTO | Histórico y evaluación |
+| F24 | Pronosticado vs ocurrido | Aciertos, falsas alarmas y omisiones cuando haya observación. | PENDIENTE | ALTO | Histórico y evaluación |
+| F25 | Desempeño del modelo | Métricas recibidas/validadas del Champion. | PENDIENTE | MEDIO | Modelo y datos |
+| F26 | Trazabilidad | Champion, versión, run MLflow si existe, fechas y dato fuente. | PENDIENTE | ALTO | Modelo y datos |
+| F27 | Procedencia de datos | Rol de clásico, grave y clima realmente usado. | PARCIAL | MEDIO | Modelo y datos |
+| F28 | API → Champion | Integración real desacoplada mediante adapter. | PENDIENTE | ALTO | Infraestructura |
+| F29 | Loading/error/empty/retry | Estados explícitos; nunca mock silencioso. | PARCIAL | ALTO | Principal/actualización |
+| F30 | Última inferencia exitosa | Fecha/hora diferente del corte epidemiológico. | PENDIENTE | ALTO | Principal |
+| F31 | Exportar snapshot | PDF/CSV con resultado y trazabilidad. | PENDIENTE | MEDIO | Principal |
+| F32 | Responsive/accesibilidad | Contraste, etiquetas y uso sin depender del color. | PARCIAL | MEDIO | Principal |
+| F33 | Mes de referencia | Mostrar/seleccionar corte soportado para consulta histórica. | PENDIENTE | ALTO | Principal/Historico |
+| F34 | Actualizar datos | Acción explícita para cargar nuevo archivo mensual. | PENDIENTE | ALTO | Header/modal |
+| F35 | Validación de carga | Mostrar validación, periodo, errores y confirmación antes de inferir. | PENDIENTE | ALTO | Actualización mensual |
+| F36 | Estado de procesamiento | Mostrar procesamiento/éxito/fallo y `run_id`. | PENDIENTE | ALTO | Actualización mensual |
+| F37 | Refresh read-only | Reconsultar `latest` sin ejecutar preparación ni Champion. | PENDIENTE | ALTO | Principal |
 
-## 3. Especificación funcional objetivo — 33 funcionalidades
+## 5. Pantalla principal
 
-| ID | Funcionalidad | Descripción y propósito | Estado actual | Valor | Cobertura visual / ubicación objetivo | Módulo |
-|---|---|---|---|---|---|---|
-| F01 | Encabezado operacional | Objetivo, ciudad, corte, granularidad, T+1/T+2 y actualización. | PARCIAL | ALTO | **PRESENTE — MEJORAR.** Ya existe encabezado y última actualización, pero aún dice “dengue grave” y debe mostrar el alcance canónico. | **PANTALLA PRINCIPAL** |
-| F02 | Selector de ciudad | Bucaramanga/Cali actualizando toda la vista. | EXISTE | ALTO | **PRESENTE — PRINCIPAL.** Selector visible en la parte superior. | **PANTALLA PRINCIPAL** |
-| F03 | Fecha de corte epidemiológico | Último mes observado usado en la inferencia. | PARCIAL | ALTO | **AGREGAR — PRINCIPAL.** Debe verse junto al selector/encabezado como “Datos hasta YYYY-MM”. | **PANTALLA PRINCIPAL** |
-| F04 | Calidad y frescura | Completitud, retrasos y advertencias de SIVIGILA/clima. | PENDIENTE | ALTO | **AGREGAR — PRINCIPAL + detalle en MENÚ: MODELO Y DATOS.** En principal basta un estado compacto; el detalle va en módulo secundario. | **MODELO Y DATOS** |
-| F05 | Alerta principal T+2 | `EXCESO/NO_EXCESO`, ciudad y mes objetivo; clase desde backend. | MOCK | ALTO | **PRESENTE — PRINCIPAL.** Existe tarjeta de alerta T+2. Debe cambiar de mock a salida real. | **PANTALLA PRINCIPAL** |
-| F06 | Señal cuantitativa T+2 | Probabilidad válida u otra salida cuantitativa real del champion. | CORREGIR | ALTO | **PRESENTE — MEJORAR.** Existe tarjeta de probabilidad T+2; debe consumir la señal real y no asumir siempre probabilidad. | **PANTALLA PRINCIPAL** |
-| F07 | Incertidumbre | Solo si existe método estadístico válido. | MOCK | ALTO | **PRESENTE — MEJORAR.** La tarjeta ya reserva espacio para IC 95%; debe mostrarse únicamente cuando backend entregue incertidumbre real. | **PANTALLA PRINCIPAL** |
-| F08 | Evolución T+1→T+2 | Comparar clase, mes y salida real de ambos horizontes. | MOCK | ALTO | **PRESENTE — PRINCIPAL.** La tarjeta de señal muestra tendencia T+1→T+2 y el comparativo también expone ambos horizontes. | **PANTALLA PRINCIPAL** |
-| F09 | Regla/threshold real | Threshold probabilístico o regla de decisión versionada. | CORREGIR | ALTO | **PRESENTE — MEJORAR.** La gráfica muestra referencia de 50%, pero hoy está hardcodeada; debe venir del backend. | **PANTALLA PRINCIPAL** |
-| F10 | Estado frente al canal | Casos actuales, P75 y relación respecto al P75. | PARCIAL | ALTO | **PRESENTE — PRINCIPAL.** Existe tarjeta “Estado vs. canal endémico”. | **PANTALLA PRINCIPAL** |
-| F11 | Clasificación actual | Zona epidemiológica actual, separada de la predicción. | PARCIAL | ALTO | **PRESENTE — MEJORAR.** La tarjeta del canal ya muestra una descripción/semántica; debe formalizar zona actual con datos reales. | **PANTALLA PRINCIPAL** |
-| F12 | Comparativo de ciudades | T+1/T+2, clase y señal de riesgo para Bucaramanga/Cali. | MOCK | ALTO | **PRESENTE — PRINCIPAL.** Existe tabla comparativa interactiva de ambas ciudades. | **PANTALLA PRINCIPAL** |
-| F13 | Histórico + canal endémico | Serie target + P25/P50/P75 + excesos históricos. | PARCIAL | ALTO | **PRESENTE — PRINCIPAL.** La gráfica actual ya incluye observados, P25, P50, P75 y excesos históricos. | **PANTALLA PRINCIPAL** |
-| F14 | Observado vs futuro | Separación visual inequívoca entre historia y T+1/T+2. | EXISTE | ALTO | **PRESENTE — PRINCIPAL.** La gráfica sombrea la zona futura y marca el inicio del pronóstico. | **PANTALLA PRINCIPAL** |
-| F15 | Eliminar proyección artificial | No inventar casos en frontend; mostrar conteo solo si lo produce backend. | ELIMINAR | ALTO | **PRESENTE — INCORRECTA; ELIMINAR.** La gráfica calcula actualmente `projected` a partir de probabilidad. Debe retirarse salvo que backend entregue conteo real. | **PANTALLA PRINCIPAL** |
-| F16 | Gráfica comparativa de riesgo | Comparar outputs reales T+1/T+2 con unidad explícita. | CORREGIR | ALTO | **PRESENTE — MEJORAR.** Existe gráfica de barras T+1/T+2 por ciudad; debe usar output y threshold reales. | **PANTALLA PRINCIPAL** |
-| F17 | Explicabilidad local | Factores de una inferencia concreta; SHAP solo si es SHAP local real. | MOCK | ALTO | **PRESENTE — MEJORAR.** Existe gráfica titulada SHAP, pero hoy representa importancia agregada; debe mostrar explicación local de ciudad + corte + horizonte. | **PANTALLA PRINCIPAL** |
-| F18 | Impulsores epidemiológicos | Rezagos, rolling, SIR, canal, dengue grave, solo si explicación válida. | MOCK | ALTO | **PRESENTE — MEJORAR.** Pueden mostrarse dentro de la misma visual de explicabilidad; no crear una gráfica redundante. | **PANTALLA PRINCIPAL** |
-| F19 | Impulsores climáticos | Mostrar clima solo si fue usado y contribuye a la inferencia. | MOCK | MEDIO | **PRESENTE — MEJORAR.** Deben aparecer dentro de la explicación cuando tengan contribución real; no crear panel climático independiente. | **PANTALLA PRINCIPAL** |
-| F20 | Insights priorizados | Máximo tres mensajes derivados de resultados reales. | MOCK | ALTO | **PRESENTE — PRINCIPAL.** Existe panel de hasta tres insights; reemplazar mocks por reglas/resultados reales. | **PANTALLA PRINCIPAL** |
-| F21 | Orientación de acción | Apoyo no prescriptivo validado por equipo/experto. | MOCK | ALTO | **PRESENTE — PRINCIPAL.** Existe tarjeta de recomendación dentro de “Insights y recomendaciones”. Debe validarse y alimentarse con reglas reales. | **PANTALLA PRINCIPAL** |
-| F22 | Semántica de alerta | Texto + icono + color, diferenciando actual de futuro. | PARCIAL | MEDIO | **PRESENTE — PRINCIPAL.** Ya se usan texto, iconos, puntos y colores. Debe mantenerse accesible y coherente con estados reales. | **PANTALLA PRINCIPAL** |
-| F23 | Historial de pronósticos | Persistir corte, horizonte, clase, output, regla y modelo. | PENDIENTE | ALTO | **AGREGAR — MENÚ: HISTÓRICO.** No debe ocupar la pantalla principal; requiere tabla/línea temporal de predicciones realizadas. | **HISTÓRICO Y EVALUACIÓN** |
-| F24 | Pronosticado vs ocurrido | Aciertos, falsas alarmas y excesos omitidos. | PENDIENTE | ALTO | **AGREGAR — MENÚ: HISTÓRICO.** Vista de validación operacional vinculada al historial. | **HISTÓRICO Y EVALUACIÓN** |
-| F25 | Desempeño del modelo | Recall, Precision, F1, falsas alarmas e inicios; por ciudad si es defendible. | PENDIENTE | MEDIO | **AGREGAR — MENÚ: MODELO Y DATOS.** Mantener fuera de la pantalla epidemiológica principal para no sobrecargarla. | **MODELO Y DATOS** |
-| F26 | Trazabilidad | Champion por horizonte, versión, MLflow, fechas y versión DVC. | PENDIENTE | ALTO | **AGREGAR — MENÚ: MODELO Y DATOS.** En principal puede mostrarse solo una versión compacta; detalle completo en módulo secundario. | **MODELO Y DATOS** |
-| F27 | Procedencia de datos | Clásico como target, grave como predictor y clima realmente usado. | PARCIAL | MEDIO | **AGREGAR — MENÚ: MODELO Y DATOS.** Fuente, corte y rol de cada dataset deben estar documentados en una vista secundaria. | **MODELO Y DATOS** |
-| F28 | API → modelo real | FastAPI + artefactos finales desplegables T+1/T+2. | PENDIENTE | ALTO | **NO VISUAL — INFRAESTRUCTURA.** Habilita todas las salidas reales; no necesita un panel permanente. | **MODELO Y DATOS** |
-| F29 | Loading/error/empty/retry | Estados explícitos; nunca mock como fallback silencioso. | PARCIAL | ALTO | **PRESENTE — MEJORAR.** Ya existe loading; faltan error, empty y retry en la pantalla principal. | **PANTALLA PRINCIPAL** |
-| F30 | Última inferencia exitosa | Fecha/hora de inferencia distinta al corte epidemiológico. | PENDIENTE | ALTO | **AGREGAR — PRINCIPAL.** Mostrar de forma compacta cerca de “Última actualización”; detalle en trazabilidad. | **PANTALLA PRINCIPAL** |
-| F31 | Exportar snapshot/reporte | PDF/CSV con resultados, canal, calidad y trazabilidad. | PENDIENTE | MEDIO | **AGREGAR — PRINCIPAL.** Acción/botón de exportación; no requiere módulo propio. | **PANTALLA PRINCIPAL** |
-| F32 | Responsive/accesibilidad | Portátil/tablet, contraste, etiquetas y significado no dependiente de color. | PARCIAL | MEDIO | **PRESENTE — MEJORAR.** La implementación ya usa grids responsive y texto/iconos; falta auditoría completa de accesibilidad. | **PANTALLA PRINCIPAL** |
-| F33 | Mes de referencia / histórico | Seleccionar `Actual`; backend usa solo datos hasta ese corte y genera T+1/T+2. | PENDIENTE | ALTO | **AGREGAR — PRINCIPAL.** Selector de mes junto al selector de ciudad; en producción debe iniciar en el último corte válido. | **PANTALLA PRINCIPAL** |
+Debe responder:
+1. ¿qué ciudad y corte estoy analizando?;
+2. ¿cuál es el estado actual?;
+3. ¿hay riesgo de exceso T+1/T+2?;
+4. ¿qué salida/regla sustenta la alerta?;
+5. ¿qué factores la explican, si existe explicación válida?;
+6. ¿qué debería revisar/preparar?;
+7. ¿cuándo se actualizó la información y cuál fue la última inferencia?;
+8. ¿puedo actualizar los datos mensuales o refrescar solo la consulta?
 
-## 4. Distribución funcional por módulo
+La acción `Actualizar datos` debe estar separada visual y semánticamente de `Refresh`.
 
-### Pantalla principal — Alerta y pronóstico
-
-F01, F02, F03, F05, F06, F07, F08, F09, F10, F11, F12, F13, F14, F15, F16, F17, F18, F19, F20, F21, F22, F29, F30, F31, F32, F33.
-
-La pantalla principal concentra contexto, estado actual, predicción, comparación, explicación y orientación de acción. Debe seguir siendo una pantalla de decisión y no una consola técnica.
-
-### Histórico y evaluación
-
-F23, F24.
-
-Este módulo responde qué predijo BIOMAC anteriormente y qué ocurrió después.
-
-### Modelo y datos
-
-F04, F25, F26, F27, F28.
-
-Este módulo agrupa calidad/frescura detallada, desempeño, trazabilidad, fuentes y estado de la integración técnica. F04 puede exponer además un indicador compacto en la pantalla principal, pero su módulo propietario es `Modelo y datos`.
-
-## 5. Auditoría de la implementación visual actual
-
-La pantalla principal actual ya contiene: encabezado, selector de ciudad, alerta T+2, probabilidad T+2 con tendencia contra T+1, estado frente al canal, comparativo Bucaramanga/Cali, histórico con canal endémico, separación observado/futuro, gráfica de riesgo T+1/T+2, visual de importancia/SHAP, insights y recomendación.
-
-La arquitectura visual debe conservar una pantalla principal enfocada en decisión. No se deben trasladar a ella métricas detalladas de modelado, historial completo ni metadata técnica extensa.
-
-### Menú objetivo mínimo
+## 6. Flujo de actualización mensual
 
 ```text
-BIOMAC
-├── Alerta y pronóstico        ← PANTALLA PRINCIPAL
-├── Histórico y evaluación
-└── Modelo y datos
+Analista pulsa Actualizar datos
+        ↓
+Selecciona archivo + reference_month
+        ↓
+Dashboard confirma y envía
+        ↓
+POST /api/v2/monthly-runs
+        ↓
+VALIDATING → PREPARING → INFERENCING → PERSISTING
+        ↓
+COMPLETED
+        ↓
+Dashboard muestra resultado / consulta GET latest
 ```
 
-F31 debe ser una acción de exportación disponible desde la pantalla principal. F28 es infraestructura y se clasifica en `Modelo y datos` únicamente para mantener una ubicación funcional clara dentro de la arquitectura del producto; no requiere un panel permanente.
+Ante `FAILED`:
+- se informa etapa/error;
+- no se cambia silenciosamente a mocks;
+- se conserva el último snapshot exitoso.
 
-## 6. Flujo funcional objetivo
+## 7. Flujo de consulta
 
 ```text
-Ciudad + mes de referencia
+Abrir dashboard / Refresh
         ↓
-FastAPI valida request
+GET /api/v2/predictions/latest
         ↓
-Datos disponibles hasta t
-  ├─ casos_clasico → target vigente
-  ├─ casos_grave   → predictor
-  └─ clima         → predictor si disponible
+Último snapshot COMPLETED
         ↓
-Features reproducibles sin leakage
-        ↓
-Modelo final T+1 / T+2
-        ↓
-EXCESO/NO_EXCESO
-+ output nativo válido
-+ regla/threshold
-+ canal endémico
-+ calidad
-+ explicación local si existe
-+ trazabilidad
-        ↓
-Dashboard presenta sin recalcular
+Render UI
 ```
 
-## 7. Preguntas de la pantalla principal
+Este flujo es estrictamente read-only.
 
-1. ¿Qué ciudad y corte estoy analizando?
-2. ¿Cuál es el estado actual?
-3. ¿Hay riesgo de exceso en T+1/T+2?
-4. ¿Qué salida y regla sustentan la alerta?
-5. ¿Por qué se produjo, si existe explicación válida?
-6. ¿Qué debería revisar/preparar?
-7. ¿Qué tan frescos son los datos y cuándo se ejecutó la inferencia?
+## 8. Reglas para el Champion
 
-## 8. No agregar por defecto
+El producto recibe del equipo de modelado:
+- artefacto ejecutable o salida materializada;
+- nombre/versión;
+- contrato de entrada/features;
+- horizontes soportados;
+- tipo de output;
+- threshold/regla;
+- explicación local si existe.
 
-- mapa con solo dos ciudades;
-- clima sin propósito decisional;
+La capa dashboard/API no selecciona ni reentrena el Champion.
+
+## 9. No agregar por defecto
+
+- mapa para solo dos ciudades;
+- panel climático independiente sin propósito decisional;
 - probabilidades simuladas;
-- `risk_score` presentado como porcentaje si no es probabilidad;
-- casos futuros inventados por frontend;
-- SHAP simulado o coeficientes/importancias globales presentados como explicación local;
-- métricas técnicas/modelado detalladas en la pantalla principal;
-- KPIs redundantes;
-- datos mock mezclados con reales sin identificación.
+- score mostrado como porcentaje cuando no sea probabilidad;
+- casos futuros inventados;
+- SHAP simulado;
+- métricas detalladas de modelado en la principal;
+- botón `Refresh` que dispare inferencia;
+- reentrenamiento desde la UI;
+- reemplazo silencioso de una predicción válida por un run fallido.
 
-## 9. Dependencias para datos reales
+## 10. Dependencias para implementación real
 
-1. Target versionado: `casos_clasico`; `casos_grave` predictor; sin suma.
-2. Artefactos finales desplegables/evaluados T+1 y T+2.
-3. Champion explícito por horizonte.
-4. Features sin leakage.
-5. Canal reproducible con P25/P50/P75.
-6. Regla de decisión versionada.
-7. Métricas globales y por ciudad cuando sean defendibles.
-8. Clima con cobertura suficiente antes de atribuir efecto.
-9. Probabilidad solo si es una salida válida.
-10. Explicación local válida para F17–F19.
-11. Persistencia de inferencias para F23/F24.
-12. Metadata de modelo/datos/inferencia.
-13. DVC alineado con datos procesados.
-14. Contrato FastAPI `API-sign.md` v1.1.0 o compatible.
+1. Champion explícito y accesible.
+2. Contrato de entrada/features del Champion.
+3. T+1/T+2 realmente soportados.
+4. Output y regla/threshold documentados.
+5. Transformaciones de inferencia reutilizables sin leakage.
+6. Canal endémico reproducible si lo requiere la UI/regla.
+7. Persistencia de runs/snapshots.
+8. Contrato `API-sign.md` v2.0.0.
+9. `PredictionRepository` y `ChampionAdapter` desacoplados.
+10. Pruebas de contrato y E2E.
 
-## 10. Decisiones que la UI no debe inventar
+## 11. Fuente de verdad
 
-- champion definitivo;
-- output real de cada champion;
-- threshold/regla de decisión;
-- método de incertidumbre;
-- método de explicación local;
-- política final de acciones;
-- suficiencia estadística de métricas por ciudad.
-
-## 11. Relación con API
-
-- `plan.md`: comportamiento funcional y ubicación visual.
-- `API-sign.md`: interfaz técnica Dashboard ↔ FastAPI.
-- pipeline/modelo: salidas realmente disponibles.
-
-Si cambia target, output, regla de decisión o estructura de navegación, deben revisarse este plan y el contrato API antes de modificar la UI.
+- `arquitectura.md`: flujo y responsabilidades.
+- `implementacion.md`: HUs y orden de ejecución.
+- `plan.md`: comportamiento funcional/visual.
+- `API-sign.md`: contrato HTTP.
+- `diccionario-de-datos.md`: semántica de datos.
+- Champion: salidas ML realmente disponibles.
