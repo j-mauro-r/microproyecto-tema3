@@ -26,9 +26,11 @@ Kaggle: saballesteros/maia4331-2614-grupo19
    data/processed/features_mensual.parquet       35 MB
    el mismo panel mas 40 variables predictoras y la etiqueta de brote
         |
-        |  src/models/baseline.py   y los modelos que vengan
+        |  src/models/baseline.py    reglas de referencia
+        |  src/models/train.py       regresion de Poisson
         v
-   metricas comparables entre modelos
+   MLflow en EC2, experimento sat-dengue
+   baselines y modelos con los mismos folds y las mismas metricas
 ```
 
 Cada capa lee la anterior. Ninguna vuelve a los crudos.
@@ -41,9 +43,18 @@ python data/download_datasets.py          # necesita .env con las credenciales d
 python -m src.data.build_panel            # --sample 50000 para una prueba de 20 segundos
 python -m src.features.build_features
 python -m src.models.baseline
+python -m src.models.train --tracking-uri http://IP_DEL_SERVIDOR:5000 --incluir-baselines
 
 python -m tests.test_evaluation
 python -m tests.test_features
+```
+
+Para mover el horizonte hay que rehacer las variables y volver a entrenar, porque la etiqueta cambia:
+
+```bash
+python -m src.features.build_features --horizonte 3
+python -m src.models.train --tracking-uri http://IP_DEL_SERVIDOR:5000 --incluir-baselines
+python -m src.models.train --tracking-uri http://IP_DEL_SERVIDOR:5000 --umbrales 1 1.2 1.5 1.8 2.2
 ```
 
 ## Estructura
@@ -55,6 +66,7 @@ python -m tests.test_features
 | `src/evaluation/splits.py` | Particion temporal y folds de validacion cruzada |
 | `src/evaluation/metrics.py` | Metricas de alerta, iguales para todos los modelos |
 | `src/models/baseline.py` | Los cuatro baselines de referencia |
+| `src/models/train.py` | Regresion de Poisson y registro de corridas en MLflow |
 | `tests/` | Verificacion de los modulos compartidos, sin dependencias adicionales |
 
 ---
@@ -102,9 +114,11 @@ Los rezagos son meses calendario. Con filas faltantes, `shift(1)` devuelve la fi
 
 `google_earth_engine.csv` (ERA5-Land y CHIRPS) trae `mpio_cdpmp` con el DIVIPOLA completo, asi que el cruce va por codigo. El archivo anterior, de MODIS, traia codigos GAUL de la FAO y obligaba a cruzar por nombre de municipio, perdiendo alrededor del 20%. El pipeline detecta cual de los dos formatos recibe y avisa si es el viejo.
 
-### El objetivo es dengue total
+### El objetivo es dengue clasico
 
 `SERIE_OBJETIVO = "casos_clasico"`. Se cambio desde dengue grave el 1 de septiembre, por decision de equipo, porque la serie de graves quedo inservible despues del cambio de clasificacion de la OMS de 2009 (ver Limitaciones).
+
+**Las dos series no se suman.** `casos_clasico` sale unicamente de `dengue.csv` (evento 210) y `casos_grave` unicamente de `dengue_grave.csv` (evento 220). Son dos columnas independientes del panel: la primera es el objetivo, la segunda queda como variable predictora. En SIVIGILA son dos eventos de notificacion distintos, no una particion de un mismo total, asi que sumarlos no seria correcto.
 
 ### Encuadre: cada fila predice el futuro, no el presente
 
@@ -182,7 +196,7 @@ No se usa exactitud como criterio. En los folds los meses por encima del canal s
 
 Las que deciden son sensibilidad, precision, tasa de falsas alarmas y PR-AUC, mas dos desgloses: por municipio, y separando inicios de brote de continuaciones.
 
-El PR-AUC esta implementado a mano para no depender de scikit-learn, que no esta en `requirements.txt`. Se valido contra `sklearn.metrics.average_precision_score` en 300 casos aleatorios con distintos tamanos, tasas de positivos y puntajes empatados: diferencia maxima 3,3e-16. Sensibilidad, precision, F1 y matriz de confusion se contrastaron igual en 200 casos mas.
+El PR-AUC esta implementado a mano. Cuando se escribio, scikit-learn no era dependencia del proyecto; hoy si lo es, porque el Poisson lo necesita, pero la implementacion propia se conserva a proposito: `src/evaluation/` no depende de ninguna libreria de modelado, asi que las metricas no cambian si manana se cambia de libreria. Se valido contra `sklearn.metrics.average_precision_score` en 300 casos aleatorios con distintos tamanos, tasas de positivos y puntajes empatados: diferencia maxima 3,3e-16. Sensibilidad, precision, F1 y matriz de confusion se contrastaron igual en 200 casos mas.
 
 ### Baselines
 
@@ -222,13 +236,113 @@ Fold por fold:
 
 ---
 
+## Infraestructura de experimentos
+
+Servidor de MLflow 2.22.0 en una instancia EC2 `t3.small` con Amazon Linux 2023, levantada en el Learner Lab de AWS Academy. Backend SQLite en `/opt/mlflow/mlflow.db`, artefactos en `/opt/mlflow/artifacts` servidos por el propio servidor con `--serve-artifacts`, y un servicio de systemd con `Restart=always` para que sobreviva a un reinicio de la instancia.
+
+El cliente es `mlflow-skinny`, no `mlflow` completo. El paquete completo fija `pandas<3` y forzaria a bajar la version de pandas del proyecto; la version skinny trae el cliente de seguimiento sin el resto del ecosistema y funciona con pandas 3.
+
+Dos advertencias sobre el Learner Lab. La instancia **se detiene, no se termina**, al cerrar la sesion del laboratorio, y **la IP publica cambia en cada reinicio**, asi que `--tracking-uri` hay que actualizarlo. Por eso el README no la deja escrita.
+
+Cada corrida registra los mismos parametros y las mismas metricas, vengan de un baseline o de un modelo. Es lo que hace que la comparacion en MLflow sea legitima: sin eso, el PR-AUC solo existiria para los modelos y pareceria una ventaja suya cuando en realidad es que a los baselines no se les habia dado un orden.
+
+Artefactos por corrida: `folds.csv` con el desglose fold por fold, `coeficientes.csv` con el peso de cada variable, y `variables.json` con la lista exacta de predictoras usadas.
+
+---
+
+## Resultados del modelado
+
+Regresion de Poisson sobre las 40 predictoras, con imputacion por mediana y estandarizacion. El modelo predice **conteo de casos**, y la alerta sale de comparar ese conteo contra `k` veces el P75 del mes objetivo. Separar las dos cosas permite mover el punto de corte sin reentrenar.
+
+Agregado de los ocho folds, 192 meses, 27 brotes, 3 de ellos inicio. Poisson con `alpha = 0,1`, corte en `k = 1`:
+
+| horizonte | | alertas | sensibilidad | precision | F1 | PR-AUC | inicios |
+|---|---|---|---|---|---|---|---|
+| **t+1** | persistencia | 28 | 0,889 | 0,857 | 0,873 | 0,943 | 0 de 3 |
+| | canal_endemico | 31 | 0,926 | 0,806 | 0,862 | 0,943 | **2 de 3** |
+| | poisson | 27 | 0,889 | 0,889 | **0,889** | **0,957** | 1 de 3 |
+| **t+2** | persistencia | 28 | 0,815 | 0,786 | 0,800 | 0,804 | 0 de 3 |
+| | canal_endemico | 34 | 0,852 | 0,676 | 0,754 | 0,804 | **2 de 3** |
+| | poisson | 32 | 0,889 | 0,750 | **0,814** | **0,831** | **2 de 3** |
+| **t+3** | persistencia | 28 | 0,778 | 0,750 | **0,764** | 0,643 | **2 de 3** |
+| | canal_endemico | 31 | 0,593 | 0,516 | 0,552 | 0,643 | **2 de 3** |
+| | poisson | 37 | 0,815 | 0,595 | 0,688 | **0,762** | 1 de 3 |
+
+### Ningun modelo supera al canal endemico en deteccion de inicios
+
+```
+              t+1    t+2    t+3
+persistencia  0/3    0/3    2/3
+canal         2/3    2/3    2/3
+poisson       1/3    2/3    1/3
+```
+
+El canal endemico detecta dos de los tres inicios en los tres horizontes, y el Poisson no lo supera en ninguno. Es el resultado central del ejercicio: **la regla que una secretaria de salud ya aplica mirando su grafica, sin modelo de por medio, no ha sido superada en la unica metrica que le importa a un sistema de alerta temprana.**
+
+El F1 dice otra cosa, y por eso no se usa solo. A t+1 el Poisson gana el F1 (0,889 contra 0,873) detectando **menos** inicios que el canal. Ese F1 sale de acertar continuaciones, que operativamente no valen nada.
+
+La persistencia a t+3 merece una nota: pasa de 0 a 2 inicios. No es que mejore, es que a un mes vista la regla es imposible por construccion (alerta si el mes en curso ya esta en brote, y un inicio es justo cuando no lo estaba) y a tres meses esa imposibilidad desaparece. Con 3 inicios en total, acertar 2 puede ser coincidencia.
+
+### El horizonte degrada todo, pero no por igual
+
+De t+1 a t+3 el canal endemico pierde 31 puntos de F1 (0,862 a 0,552) y la persistencia pierde 11 (0,873 a 0,764). El Poisson pierde 20 pero conserva la sensibilidad casi intacta (0,889 a 0,815): se degrada emitiendo mas alertas, no perdiendo brotes. A t+3 emite 37 alertas para 27 brotes reales.
+
+La ventaja del Poisson en PR-AUC crece con el horizonte: +0,014 a t+1, +0,027 a t+2, +0,119 a t+3. O sea que el modelo **si ordena mejor** los meses por riesgo, y cada vez mas a medida que el problema se vuelve dificil. Lo que no logra es convertir ese orden en un punto de corte mejor.
+
+### El punto de corte no rescata al modelo
+
+Barrido de `k` a t+3, mismo modelo, solo cambia donde se corta:
+
+| k | alertas | sensibilidad | precision | F1 | inicios |
+|---|---|---|---|---|---|
+| 1,0 | 37 | 0,815 | 0,595 | **0,688** | 1 de 3 |
+| 1,2 | 27 | 0,630 | 0,630 | 0,630 | 1 de 3 |
+| 1,5 | 16 | 0,519 | 0,875 | 0,651 | 1 de 3 |
+| 1,8 | 12 | 0,370 | 0,833 | 0,513 | 0 de 3 |
+| 2,2 | 9 | 0,259 | 0,778 | 0,389 | 0 de 3 |
+
+Ninguna eleccion de `k` llega a 0,764. Y subir el corte pierde inicios: a partir de 1,8 no queda ninguno. La ventaja del modelo en PR-AUC vive en la cola de alta precision y baja cobertura, que es la mitad equivocada de la curva para una alerta temprana.
+
+### Que variables pesan, y el clima
+
+Coeficientes de `poisson_alpha0.1_h1`, sobre variables estandarizadas, asi que son comparables entre si. Estan registrados como `coeficientes.csv` en cada corrida.
+
+```
+zona_canal            0,834      soil_water_l1_mean   -0,290
+sir                   0,485      temp_mean_c          -0,234
+dewpoint_mean_c       0,451      ...
+brote                -0,422      rain_mm_day_lag_3    -0,055
+p25                   0,370      rain_mm_day_lag_2    -0,045
+casos_clasico_roll3   0,362      rain_mm_day_lag_1    -0,013
+casos_clasico_lag_3  -0,327      rain_mm_day          -0,013
+casos_clasico_lag_1  -0,326      es_endemico           0,000
+```
+
+Las tres primeras posiciones son la posicion en el canal, el SIR y **el punto de rocio**, que es una medida de humedad absoluta. O sea que el clima si entra, y no de forma marginal: el punto de rocio pesa mas que cualquiera de los rezagos de casos.
+
+**Lo que no aporta es la lluvia.** Los cuatro terminos de precipitacion quedan por debajo de 0,06, un orden de magnitud debajo de la humedad y la temperatura. Es consistente con la literatura de dengue, donde la transmision responde mas a temperatura y humedad, que gobiernan el ciclo del vector, que al agua caida. Con criaderos domesticos, tanques y albercas, el agua no depende tanto de que llueva.
+
+`es_endemico` da exactamente cero porque con dos municipios los dos son endemicos y la columna es constante. Vale la pena mantenerla igual: si el alcance se amplia, deja de serlo.
+
+Advertencia al leer los signos. Varios rezagos de casos salen negativos mientras el rolling sale positivo. Con predictoras muy correlacionadas entre si, el signo de un coeficiente individual no se interpreta: el modelo reparte un mismo efecto entre columnas que dicen casi lo mismo. La magnitud agregada por familia de variables si informa, el signo de una sola no.
+
+### La regularizacion no es la palanca
+
+`alpha` en 0,01, 0,1, 1 y 10 mueve el F1 entre 0,868 y 0,889 a t+1, y entre 0,667 y 0,688 a t+3. Las diferencias caben dentro de un brote de 27. El problema no es sobreajuste.
+
+### Conclusion
+
+Con 3 inicios en ocho anios de dos municipios, un modelo no tiene de donde aprender a anticipar un inicio: cualquier diferencia en esa columna es de uno o dos casos. La limitacion es del diseno del problema, no del modelo, y ninguna busqueda de hiperparametros la va a resolver. Los caminos reales son bajar a granularidad semanal o ampliar el alcance a mas municipios, no probar mas modelos sobre estas 192 observaciones.
+
+---
+
 ## Limitacion principal: la etiqueta es un estado, no un evento
 
 **Esta es la observacion mas importante del pipeline y condiciona lo que puede aportar cualquier modelo.**
 
 De los 27 meses en brote de los folds, **3 son inicio de brote y 24 son continuacion**. Cali estuvo 12 meses seguidos por encima del P75 en 2015 y 9 en 2016. A escala mensual con umbral P75, "brote" no es un evento que ocurre: es un estado que dura casi un anio.
 
-Eso hace que predecir el mes siguiente sea casi determinista, y explica por que los baselines lucen tan bien:
+Eso hace que predecir el mes siguiente sea casi determinista, y explica por que los baselines lucen tan bien. A horizonte de un mes:
 
 | | inicios detectados | continuaciones detectadas |
 |---|---|---|
@@ -239,14 +353,18 @@ El F1 de 0,873 de la persistencia sale casi entero de acertar que un brote que y
 
 Por eso el baseline reporta las dos vistas. Un modelo que mejore el F1 agregado sin mejorar la deteccion de inicios no esta aportando nada.
 
-Con 3 inicios en ocho anios de dos municipios no hay estadistica posible, solo conteo. Dos caminos, ninguno para esta entrega:
+Con 3 inicios en ocho anios de dos municipios no hay estadistica posible, solo conteo.
 
-- **Subir el horizonte de prediccion.** Predecir el mes t con informacion hasta t-3 en vez de t-1. La persistencia se degrada y el modelo tiene donde aportar. Es un experimento comparable en MLflow.
-- **Bajar a granularidad semanal.** Cuadruplicaria las observaciones y las transiciones, y con dengue total la serie da (Cali 57 a 680 casos por semana, Bucaramanga 5 a 219). Implica rehacer el panel.
+**Subir el horizonte ya se probo** y esta medido arriba. La hipotesis era que a t+3 la persistencia se degrada y el modelo tiene donde aportar. Se degrada, si, pero el Poisson no ocupa ese espacio: gana en PR-AUC y pierde en F1 y en inicios. La hipotesis era razonable y salio que no.
+
+Quedan dos caminos, ninguno para esta entrega:
+
+- **Bajar a granularidad semanal.** Cuadruplicaria las observaciones y las transiciones, y con dengue clasico la serie da (Cali 57 a 680 casos por semana, Bucaramanga 5 a 219). Implica rehacer el panel.
+- **Ampliar el alcance a mas municipios.** El panel ya trae los 1.114 y `--todos-los-municipios` esta implementado. Los 523 endemicos darian tres ordenes de magnitud mas de inicios. El alcance de dos municipios es una restriccion del enunciado, no del pipeline.
 
 ---
 
-## Por que se cambio de dengue grave a dengue total
+## Por que se cambio de dengue grave a dengue clasico
 
 El cambio de clasificacion de la OMS de 2009, adoptado en Colombia hacia 2010-2011, parte la serie de dengue grave en dos:
 
@@ -294,17 +412,18 @@ La referencia del canal coincide con la ventana de entrenamiento. Si se cambia u
 
 **La prueba tiene 58,3% de meses en brote**, y 2024 tiene los 24 meses. No es un error del canal, 2024 fue epidemico todo el anio, pero como conjunto de evaluacion es flojo: `siempre_alerta` saca 0,583 de precision sin hacer nada.
 
-**Bucaramanga aporta un solo brote en los ocho folds**, los otros 26 son de Cali. El cambio a dengue total resolvio la escasez global, de 7 brotes a 27, pero no que Bucaramanga siga siendo casi invisible en la validacion cruzada. Su P75 lo fijan 2010, 2013 y 2014, y entre 2015 y 2022 no vuelve a esos niveles. En la prueba si aparece, con 23 de 36 meses.
+**Bucaramanga aporta un solo brote en los ocho folds**, los otros 26 son de Cali. El cambio a dengue clasico resolvio la escasez global, de 7 brotes a 27, pero no que Bucaramanga siga siendo casi invisible en la validacion cruzada. Su P75 lo fijan 2010, 2013 y 2014, y entre 2015 y 2022 no vuelve a esos niveles. En la prueba si aparece, con 23 de 36 meses.
 
 **Los anios epidemicos no estan definidos de forma consistente.** El documento de decisiones lista 2010, 2013, 2016 y 2019; el EDA agrega 2023 y 2024. Ninguna de las dos listas incluye 2024, que es el anio con mas casos de toda la serie con 309.627, mas del doble que 2010. Y 2014, con 105.356, queda fuera mientras 2016, con 100.117, entra.
 
-**Cuidado al leer el baseline de persistencia.** En el agregado su sensibilidad y su precision son siempre iguales, porque correr una serie binaria un mes conserva la cantidad de unos y hace que las alertas emitidas coincidan con los brotes reales. Es aritmetica, no desempenio.
+**Cuidado al leer el baseline de persistencia.** Su sensibilidad y su precision salen casi iguales en los tres horizontes, y no es desempenio sino aritmetica: correr una serie binaria conserva la cantidad de unos, asi que emite 28 alertas contra 27 brotes reales sin importar el horizonte. La precision queda atada a la sensibilidad por construccion y no aporta informacion aparte.
+
+**El PR-AUC de persistencia y canal_endemico es identico** (0,943 / 0,804 / 0,643 segun el horizonte). Es correcto y esta puesto a proposito: comparten el mismo puntaje continuo, la razon entre los casos de hoy y el umbral del mes objetivo, y solo se diferencian en donde cortan. El PR-AUC mide el orden, no el corte.
 
 ---
 
 ## Pendientes
 
-- MLflow en EC2 para registrar los experimentos.
 - Realinear DVC para que versione `data/processed/` en vez de los crudos viejos, que ya no existen. Los tres `.dvc` de `data/raw/` quedaron sin actualizar.
 - Un target de `make` para el panel y las variables.
 - Llevar al experto: `AJUSTE`, `TIP_CAS`, y si el horizonte de prediccion de un mes es el adecuado dado que la etiqueta se comporta como un estado anual.
