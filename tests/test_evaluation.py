@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 
 from src.evaluation.metrics import (
+    inicios_vs_continuaciones,
     metricas_alerta,
     metricas_por_grupo,
     promedio_precision,
@@ -98,6 +99,30 @@ def test_metricas_degeneradas() -> None:
 
     perfecto = metricas_alerta(y, y)
     check("prediccion perfecta da f1 = 1", cerca(perfecto["f1"], 1.0))
+
+
+def test_inicios_vs_continuaciones() -> None:
+    print("\ninicios de brote separados de continuaciones")
+    #         brote:  0  1  1  1  0  0  1  1
+    #       inicio:   -  X  -  -  -  -  X  -
+    y_real =        [0, 1, 1, 1, 0, 0, 1, 1]
+    es_inicio =     [0, 1, 0, 0, 0, 0, 1, 0]
+    persistencia =  [0, 0, 1, 1, 1, 0, 0, 1]   # el brote del mes anterior
+
+    r = inicios_vs_continuaciones(y_real, persistencia, es_inicio)
+    check("cuenta 2 inicios", r["inicios"] == 2, f"= {r['inicios']}")
+    check("cuenta 3 continuaciones", r["continuaciones"] == 3, f"= {r['continuaciones']}")
+    check("la persistencia no detecta ningun inicio", r["inicios_detectados"] == 0)
+    check("pero acierta todas las continuaciones",
+          r["continuaciones_detectadas"] == 3, f"= {r['continuaciones_detectadas']}")
+
+    perfecto = inicios_vs_continuaciones(y_real, y_real, es_inicio)
+    check("una prediccion perfecta detecta los 2 inicios",
+          perfecto["inicios_detectados"] == 2)
+
+    nunca = inicios_vs_continuaciones(y_real, [0] * 8, es_inicio)
+    check("el que nunca alerta no detecta nada", nunca["inicios_detectados"] == 0
+          and nunca["continuaciones_detectadas"] == 0)
 
 
 def test_validaciones() -> None:
@@ -206,6 +231,7 @@ def main() -> int:
         test_metricas_caso_conocido,
         test_pr_auc,
         test_metricas_degeneradas,
+        test_inicios_vs_continuaciones,
         test_validaciones,
         test_split,
         test_split_rechaza_cortes_malos,
