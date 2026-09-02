@@ -4,10 +4,11 @@ Metricas del sistema de alerta.
 Todos los modelos se reportan con estas funciones para que la tabla
 comparativa de la entrega compare lo mismo.
 
-La exactitud se calcula y se devuelve, pero no sirve como criterio: con el
-93,5% de los meses sin casos graves, un modelo que nunca alerta acierta el
-93,5%. Las metricas de decision son sensibilidad, precision, tasa de falsas
-alarmas y PR-AUC.
+La exactitud se calcula y se devuelve, pero no sirve como criterio. En los
+folds de validacion los meses por encima del canal son alrededor del 14%, asi
+que un modelo que nunca alerta acierta el 86% sin detectar un solo brote. Las
+metricas de decision son sensibilidad, precision, tasa de falsas alarmas y
+PR-AUC.
 """
 
 from __future__ import annotations
@@ -123,6 +124,46 @@ def tabla_comparativa(resultados: dict[str, dict], decimales: int = 3) -> pd.Dat
     return tabla
 
 
+def inicios_vs_continuaciones(y_real, y_pred, es_inicio) -> dict:
+    """
+    Separa la deteccion de inicios de brote de la de continuaciones.
+
+    Un inicio es un mes en brote cuyo mes anterior no lo estaba. Es lo unico
+    que puede aportar un sistema de alerta temprana: cuando el brote ya lleva
+    meses, la secretaria de salud ya lo sabe. Un baseline de persistencia luce
+    bien en el agregado porque acierta las continuaciones, pero por
+    construccion no puede detectar un solo inicio.
+
+    Se devuelve como conteo. Los inicios son pocos y una proporcion sobre tres
+    casos no significa nada.
+    """
+    y_real = _a_binario(y_real, "y_real")
+    y_pred = _a_binario(y_pred, "y_pred")
+    es_inicio = _a_binario(es_inicio, "es_inicio")
+    if not len(y_real) == len(y_pred) == len(es_inicio):
+        raise ValueError("y_real, y_pred y es_inicio tienen distinta longitud")
+
+    inicio = (y_real == 1) & (es_inicio == 1)
+    continua = (y_real == 1) & (es_inicio == 0)
+    return {
+        "inicios": int(inicio.sum()),
+        "inicios_detectados": int((inicio & (y_pred == 1)).sum()),
+        "continuaciones": int(continua.sum()),
+        "continuaciones_detectadas": int((continua & (y_pred == 1)).sum()),
+    }
+
+
+def tabla_inicios(resultados: dict[str, dict]) -> pd.DataFrame:
+    """resultados: {nombre del modelo: dict devuelto por inicios_vs_continuaciones}"""
+    tabla = pd.DataFrame(resultados).T
+    with np.errstate(invalid="ignore", divide="ignore"):
+        tabla["sens_inicios"] = (tabla["inicios_detectados"] / tabla["inicios"]).round(3)
+        tabla["sens_continuaciones"] = (
+            tabla["continuaciones_detectadas"] / tabla["continuaciones"]
+        ).round(3)
+    return tabla
+
+
 def metricas_por_grupo(
     df: pd.DataFrame,
     col_grupo: str,
@@ -133,8 +174,9 @@ def metricas_por_grupo(
     """
     Metricas desglosadas por municipio.
 
-    Bucaramanga tiene 36% de meses sin casos graves y Cali 12%, asi que el
-    promedio de los dos puede esconder que el modelo sirve en uno y no en otro.
+    Los dos municipios tienen dinamicas distintas y no aportan lo mismo: en los
+    folds de validacion casi todos los brotes son de Cali. El promedio de los
+    dos puede esconder que el modelo sirve en uno y no en el otro.
     """
     filas = {
         clave: metricas_alerta(g[col_real], g[col_pred], g[col_score] if col_score else None)

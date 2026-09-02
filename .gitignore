@@ -27,3 +27,9 @@ data/processed/*.parquet
 # Bytecode de Python
 __pycache__/
 *.py[cod]
+
+# Llaves privadas. No deberian estar en el repo, ni siquiera ignoradas.
+*.pem
+*.key
+
+mlruns/
