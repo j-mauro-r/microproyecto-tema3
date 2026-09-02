@@ -3,6 +3,20 @@ Calcula el set de metricas del contrato de API v1.1.0.
 """
 import numpy as np
 import mlflow
+from sklearn.linear_model import LogisticRegression
+
+
+class PlattCalibrator:
+    """Platt scaling via logistic regression. Expone .transform() para reemplazar IsotonicRegression."""
+    def __init__(self):
+        self._lr = LogisticRegression(C=1.0, solver="lbfgs", max_iter=1000)
+
+    def fit(self, probs, labels):
+        self._lr.fit(np.array(probs).reshape(-1, 1), labels)
+        return self
+
+    def transform(self, probs):
+        return self._lr.predict_proba(np.array(probs).reshape(-1, 1))[:, 1]
 
 
 def full_metrics(y_true, y_pred_bin, y_ini=None):

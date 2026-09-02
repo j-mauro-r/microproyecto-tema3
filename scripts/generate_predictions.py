@@ -13,10 +13,14 @@ import os
 import pickle
 from datetime import datetime, timezone, date
 
+import sys
 import numpy as np
 import pandas as pd
 from dateutil.relativedelta import relativedelta
 from sklearn.metrics import f1_score
+
+sys.path.insert(0, os.path.dirname(__file__))
+from model_utils import make_t2_target
 
 ROOT      = os.path.join(os.path.dirname(__file__), "..")
 DATA_PATH = os.path.join(ROOT, "data", "processed", "features_mensual.parquet")
@@ -42,12 +46,12 @@ def load_model(horizonte):
     """Load calibrated model if available, else raw pkl.
     Returns (model, calibrator_or_None, features, threshold_or_None, version, is_calibrated).
     """
-    if horizonte == 1:
-        cal_path = os.path.join(MODEL_DIR, "xgb_clasico_calibrated.pkl")
-        if os.path.exists(cal_path):
-            with open(cal_path, "rb") as fh:
-                pkg = pickle.load(fh)
-            return pkg["model"], pkg["calibrator"], pkg["features"], pkg["best_threshold"], "xgb-calibrated-T1", True
+    cal_name = "xgb_clasico_calibrated.pkl" if horizonte == 1 else f"xgb_clasico_T{horizonte}_calibrated.pkl"
+    cal_path = os.path.join(MODEL_DIR, cal_name)
+    if os.path.exists(cal_path):
+        with open(cal_path, "rb") as fh:
+            pkg = pickle.load(fh)
+        return pkg["model"], pkg["calibrator"], pkg["features"], pkg["best_threshold"], f"xgb-calibrated-T{horizonte}", True
     raw_path = os.path.join(MODEL_DIR, f"xgb_clasico_T{horizonte}.pkl")
     if not os.path.exists(raw_path):
         return None, None, None, None, None, False
@@ -56,10 +60,14 @@ def load_model(horizonte):
     return model, None, list(model.feature_names_in_), None, f"xgb-T{horizonte}", False
 
 
-def best_threshold_from_val(model, feats, df):
+def best_threshold_from_val(model, feats, df, horizonte=1):
+    if horizonte == 2:
+        df, target_col = make_t2_target(df, TARGET)
+    else:
+        target_col = TARGET
     val = df[(df["anio"] >= TRAIN_END - 1) & (df["anio"] <= TRAIN_END)].copy()
     X_val = val[feats].fillna(0)
-    y_val = val[TARGET].astype(int).values
+    y_val = val[target_col].astype(int).values
     prob_val = model.predict_proba(X_val)[:, 1]
     thrs = np.arange(0.05, 0.95, 0.01)
     f1s  = [f1_score(y_val, (prob_val >= t).astype(int), zero_division=0) for t in thrs]
@@ -81,16 +89,16 @@ def main():
                   f"Entrena con: python scripts/train_clasico_model.py --horizonte {horizonte}")
             continue
 
-        # Build a lookup: (divipola_str, anio, mes) -> objetivo for observed_label
+        # Build a lookup: (divipola_str, anio, mes) -> brote (actual state at that month)
         target_lookup = {
-            (str(int(r["divipola"])), int(r["anio"]), int(r["mes"])): int(r[TARGET])
+            (str(int(r["divipola"])), int(r["anio"]), int(r["mes"])): int(r["brote"])
             for _, r in df.iterrows()
-            if pd.notna(r[TARGET]) and pd.notna(r["divipola"])
+            if pd.notna(r["brote"]) and pd.notna(r["divipola"])
         }
 
         # Compute threshold from val if not available
         if thr is None:
-            thr = best_threshold_from_val(model, feats, df)
+            thr = best_threshold_from_val(model, feats, df, horizonte)
 
         X_cities = test_cities[feats].fillna(0)
         probs_raw = model.predict_proba(X_cities)[:, 1]
