@@ -5,13 +5,15 @@
 - **ID canónico:** HU004
 - **Alias en backlog:** HU-INT-004
 - **Nombre:** Adapter del Champion
-- **Estado:** `[PENDIENTE]`
+- **Estado:** `[COMPLETADA — DESARROLLO]`
+- **Deployment AWS:** `[PENDIENTE]`
+- **Integración Champion real:** `[PENDIENTE MODELADO/AWS]`
 - **Prioridad:** ALTA
 - **Tipo:** Backend / Integración ML / Serving
 - **Metodología:** DWP (Deep Work Plan)
 - **Dependencia previa:** HU003 — Adaptación mínima al contrato del Champion `[COMPLETADA]`
 - **Habilita:** HU005 — Orquestación del run mensual (`HU-INT-005`)
-- **Gate posterior:** HU005 no debe iniciar hasta que exista una interfaz estable `ChampionAdapter`, un `ChampionOutput` verificable y una estrategia explícita para cargar el Champion real sin acoplar FastAPI al framework ML.
+- **Gate posterior:** HU005 puede iniciar usando la interfaz estable `ChampionAdapter` y `ChampionOutput`; la validación con Champion real y deployment permanece como gate separado de modelado/AWS.
 
 ### Fuentes de verdad
 
@@ -857,7 +859,7 @@ HU004 puede marcar su **parte de desarrollo** `[COMPLETADA]` cuando:
 - no se inventan salidas del Champion;
 - el handoff a HU005 está documentado.
 
-Si el Champion real aún no fue entregado, la HU debe registrar claramente la dependencia pendiente y no declarar validación real de modelo.
+**Estado actual:** `[COMPLETADA — DESARROLLO]` según la evidencia DWP del PR #25. El Champion real aún no ha sido entregado con un contrato de serving definitivo, por lo que no se declara validación real de modelo ni deployment completado.
 
 ---
 
