@@ -23,6 +23,15 @@ from api.app.champion.provider import (
     MaterializedChampionProvider,
     build_champion_output_provider,
 )
+from api.app.champion.service import (
+    CallableMaterializedChampionResultProvider,
+    ChampionInputProvider,
+    ChampionOperationalContext,
+    ChampionService,
+    MaterializedChampionResultProvider,
+    ValidatedUploadChampionInputProvider,
+    build_champion_service,
+)
 
 __all__ = [
     "ChampionAdapter",
@@ -33,6 +42,9 @@ __all__ = [
     "ChampionPrediction",
     "ChampionExecutionContext",
     "ChampionProviderStrategy",
+    "ChampionOperationalContext",
+    "ChampionService",
+    "ChampionInputProvider",
     "ChampionRuntime",
     "LazyChampionAdapter",
     "MUNICIPALITY_NAMES",
@@ -41,7 +53,11 @@ __all__ = [
     "MaterializedOutputAdapter",
     "ExecutableChampionProvider",
     "MaterializedChampionProvider",
+    "MaterializedChampionResultProvider",
+    "CallableMaterializedChampionResultProvider",
     "NativePrediction",
     "build_champion_adapter",
     "build_champion_output_provider",
+    "ValidatedUploadChampionInputProvider",
+    "build_champion_service",
 ]

@@ -7,23 +7,22 @@
 
 ## Resultado arquitectónico
 
-HU005 y las HUs posteriores disponen de una sola operación:
+HU005 y las HUs posteriores disponen de una sola operación neutral:
 
 ```text
-HU005 → ChampionOutputProvider.produce(context) → ChampionOutput
+HU005 → ChampionService.produce(ChampionOperationalContext) → ChampionOutput
 ```
 
 La estrategia se selecciona exclusivamente en composición/configuración:
 
 ```text
-MVP:    MaterializedChampionProvider → MaterializedOutputAdapter → ChampionOutput
-Futuro: ExecutableChampionProvider   → LazyChampionAdapter       → ChampionOutput
+MVP:    resolver PR12 → MaterializedChampionProvider → ChampionOutput
+Futuro: resolver HU003 → ExecutableChampionProvider  → ChampionOutput
 ```
 
-Ambos implementan `ChampionOutputProvider`. No existe fallback: si el provider
-seleccionado falla, el error se propaga y no se invoca la otra estrategia.
-`ChampionExecutionContext` es inmutable; cada provider exige su única entrada, rechaza
-la de la otra estrategia y valida `reference_month` y el hash fuente cuando aplica.
+`build_champion_service` selecciona exactamente una estrategia. HU005 no construye
+`ChampionExecutionContext`, `ChampionInput` ni `MaterializedChampionResult`: los
+resolvers inyectados y el service los mantienen dentro de HU004. No existe fallback.
 
 ## Archivos
 
@@ -31,7 +30,9 @@ Modificados en el cierre del blocker:
 
 - `api/app/champion/__init__.py`
 - `api/app/champion/provider.py`
+- `api/app/champion/service.py`
 - `api/tests/test_champion_provider.py`
+- `api/tests/test_champion_service.py`
 - `dashboard_prototipos/docs/hu004_champion_adapter.md`
 - `dashboard_prototipos/docs/hu004_evidencia_implementacion.md`
 - `dashboard_prototipos/docs/arquitectura.md`
@@ -41,12 +42,14 @@ Modificados en el cierre del blocker:
 La implementación previa vigente incluye los adapters, modelos y pruebas ejecutables y
 materializados bajo `api/app/champion/` y `api/tests/`.
 
-## Evidencia de intercambiabilidad
+## Evidencia de desacoplamiento
 
-- El mismo consumer de prueba recibe `ChampionOutputProvider` y llama únicamente
-  `produce(context)` con cualquiera de los dos providers.
+- El mismo consumer recibe `ChampionService` y llama `produce(operational_context)` con
+  cualquiera de las dos configuraciones.
+- El source del consumer no menciona `ChampionInput`, `MaterializedChampionResult` ni estrategia.
 - Ambos caminos retornan exactamente `ChampionOutput` y satisfacen el Protocol.
-- La fábrica acepta una sola estrategia y rechaza dependencias de la estrategia opuesta.
+- La fábrica del service acepta una sola estrategia y rechaza dependencias mezcladas.
+- Cada estrategia obtiene internamente su input mediante un resolver inyectado.
 - Un adapter materializado que falla propaga su excepción; no llama al ejecutable.
 - El provider ejecutable delega y mantiene una sola carga tras múltiples llamadas.
 - El materializado conserva thresholds T+1 `0.61` y T+2 `0.67` del fixture.
@@ -56,11 +59,11 @@ materializados bajo `api/app/champion/` y `api/tests/`.
 | CA | Estado | Evidencia |
 |---|---|---|
 | CA01 | PASS | baseline y regresión completa verdes |
-| CA02 | PASS | interfaz única `produce(context)` |
-| CA03 | PASS | ambos providers satisfacen el mismo Protocol |
+| CA02 | PASS | interfaz neutral `ChampionService.produce` |
+| CA03 | PASS | contexto público no contiene inputs A/B |
 | CA04 | PASS | consumer HU005-style sin branching A/B |
 | CA05 | PASS | ambos retornan `ChampionOutput` |
-| CA06 | PASS | MVP selecciona materializado por composición |
+| CA06 | PASS | MVP selecciona materializado dentro de HU004 |
 | CA07 | PASS | ejecutable es alternativa futura, no requisito MVP |
 | CA08 | PASS | provider ejecutable delega sin duplicar lógica |
 | CA09 | PASS | load-once preservado |
@@ -72,10 +75,10 @@ materializados bajo `api/app/champion/` y `api/tests/`.
 | CA15 | PASS | thresholds T+1/T+2 independientes |
 | CA16 | PASS | target_month validado |
 | CA17 | PASS | metadata y feature contract preservados |
-| CA18 | PASS | contexto ejecutable incorrecto falla controladamente |
-| CA19 | PASS | contexto materializado incorrecto falla controladamente |
+| CA18 | PASS | resolver ejecutable obtiene ChampionInput internamente |
+| CA19 | PASS | resolver materializado obtiene ChampionResult internamente |
 | CA20 | PASS | ausencia de fallback demostrada |
-| CA21 | PASS | HU005 solo requiere provider/output comunes |
+| CA21 | PASS | HU005 solo requiere service/contexto neutral/output |
 | CA22 | PASS | documentación consolidada y consistente |
 
 ## Autovalidaciones canónicas AV01–AV20
@@ -84,8 +87,8 @@ materializados bajo `api/app/champion/` y `api/tests/`.
 |---|---|---|
 | AV01 | PASS | imports públicos sin frameworks ML |
 | AV02 | PASS | contratos/contexto inmutables |
-| AV03 | PASS | executable produce output común |
-| AV04 | PASS | materialized produce output común |
+| AV03 | PASS | service ejecutable produce output común |
+| AV04 | PASS | service materializado produce output común |
 | AV05 | PASS | consumer idéntico funciona con A/B |
 | AV06 | PASS | tipo de salida no cambia |
 | AV07 | PASS | validación feature contract preservada |
@@ -94,8 +97,8 @@ materializados bajo `api/app/champion/` y `api/tests/`.
 | AV10 | PASS | cuatro claves materializadas exactas |
 | AV11 | PASS | asociación independiente del orden |
 | AV12 | PASS | thresholds por horizonte preservados |
-| AV13 | PASS | contexto ejecutable incorrecto rechazado |
-| AV14 | PASS | contexto materializado incorrecto rechazado |
+| AV13 | PASS | input ejecutable resuelto dentro de HU004 |
+| AV14 | PASS | resultado materializado resuelto dentro de HU004 |
 | AV15 | PASS | selección explícita probada |
 | AV16 | PASS | fallo no conmuta estrategia |
 | AV17 | PASS | sin AWS/DVC/MLflow/modelo/red |
@@ -110,13 +113,16 @@ materializados bajo `api/app/champion/` y `api/tests/`.
 → 11 passed, 1 warning in 0.02s
 
 .venv/bin/python -m pytest api/tests/test_materialized_champion_adapter.py -q
-→ 34 passed, 1 warning in 0.17s
+→ 34 passed, 1 warning in 0.16s
 
 .venv/bin/python -m pytest api/tests/test_champion_provider.py -q
-→ 10 passed, 1 warning in 0.14s
+→ 10 passed, 1 warning in 0.15s
+
+.venv/bin/python -m pytest api/tests/test_champion_service.py -q
+→ 8 passed, 1 warning in 0.15s
 
 .venv/bin/python -m pytest api/tests -q
-→ 126 passed, 1 warning in 0.75s
+→ 134 passed, 1 warning in 0.91s
 
 .venv/bin/python -m compileall -q api/app api/tests
 → exit 0, sin salida

@@ -648,16 +648,17 @@ No es requisito para HU005 ni para cerrar el MVP. No debe utilizarse como fallba
 
 ### Regla para HU005–HU010
 
-A partir de HU005, el orquestador debe recibir un `ChampionOutputProvider` y llamar una
-única operación `produce(context)`. Su resultado es siempre `ChampionOutput`. Las HUs
+A partir de HU005, el orquestador debe recibir un `ChampionService` y entregar un
+`ChampionOperationalContext` neutral a su única operación `produce`. Su resultado es
+siempre `ChampionOutput`. Las HUs
 posteriores no pueden depender de `ChampionResult`, JSON físico,
 `generate_champion_output.py`, pickle/XGBoost, `.whl` o de cómo se produjo la predicción.
 
 Por tanto, los flujos posteriores deben conceptualizarse así:
 
 ```text
-ChampionOutputProvider configurado
-→ produce(context)
+ChampionService configurado dentro de HU004
+→ produce(operational_context)
 → ChampionOutput
 → HU005 ResultMapper/orquestación
 → HU006 persistencia

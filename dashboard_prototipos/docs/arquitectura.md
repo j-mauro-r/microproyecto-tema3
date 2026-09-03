@@ -647,7 +647,7 @@ MVP / Modo B →  │ MaterializedChampionProvider │
                 └──────────────┬───────────────┘
                                │
                                v
-                    ChampionOutputProvider
+                       ChampionService
                                │
                                v
                         ChampionOutput
@@ -661,7 +661,7 @@ Futuro / A  →   │ ExecutableChampionProvider  │
                 └──────────────────────────────┘
 ```
 
-`ChampionOutputProvider.produce(context) → ChampionOutput` es la frontera estable entre
+`ChampionService.produce(ChampionOperationalContext) → ChampionOutput` es la frontera estable entre
 integración ML y aplicación.
 
 ### 28.2 Estrategia del MVP
@@ -694,8 +694,9 @@ Los dos adapters son **alternativas configurables**. No existe fallback automát
 
 ### 28.5 Regla para componentes posteriores
 
-`MonthlyPredictionOrchestrator` debe depender solo de `ChampionOutputProvider` y
-`ChampionOutput`; los componentes posteriores consumen `ChampionOutput`. Queda
+`MonthlyPredictionOrchestrator` debe depender solo de `ChampionService`,
+`ChampionOperationalContext` y `ChampionOutput`; los componentes posteriores consumen
+`ChampionOutput`. Queda
 prohibido acoplar HU005+ a:
 
 - estructura concreta `ChampionResult` de PR #12;

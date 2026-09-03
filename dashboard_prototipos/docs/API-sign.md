@@ -447,7 +447,7 @@ Los endpoints, schemas HTTP, `PredictionSnapshot`, persistencia y frontend deben
 `POST /monthly-runs` significa **obtener una nueva salida Champion válida para el run**, no necesariamente deserializar/ejecutar un modelo dentro del proceso FastAPI. El detalle pertenece a HU004.
 
 La capa de orquestación de la API solo puede invocar
-`ChampionOutputProvider.produce(context)` y recibir `ChampionOutput`. No puede contener
+`ChampionService.produce(ChampionOperationalContext)` y recibir `ChampionOutput`. No puede contener
 branching del tipo `if materialized` / `if executable`, ni importar adapters concretos,
 JSON PR #12, XGBoost, pickle o paquetes de modelo.
 
