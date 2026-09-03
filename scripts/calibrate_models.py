@@ -14,7 +14,7 @@ import pickle
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
-from model_utils import make_t2_target, PlattCalibrator
+from model_utils import ANIO_FIN_TRAIN, make_t2_target, PlattCalibrator
 
 import numpy as np
 import pandas as pd
@@ -25,7 +25,7 @@ DATA_PATH = os.path.join(ROOT, "data", "processed", "features_mensual.parquet")
 MODEL_DIR = os.path.join(ROOT, "model")
 
 TARGET    = "objetivo"
-TRAIN_END = 2023
+TRAIN_END = ANIO_FIN_TRAIN
 
 
 def compute_threshold(y_val, prob_val):

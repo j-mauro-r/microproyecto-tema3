@@ -20,7 +20,7 @@ from dateutil.relativedelta import relativedelta
 from sklearn.metrics import f1_score
 
 sys.path.insert(0, os.path.dirname(__file__))
-from model_utils import make_t2_target
+from model_utils import ANIO_FIN_TRAIN, make_t2_target
 
 ROOT      = os.path.join(os.path.dirname(__file__), "..")
 DATA_PATH = os.path.join(ROOT, "data", "processed", "features_mensual.parquet")
@@ -34,7 +34,7 @@ PROHIBIDAS = {
 }
 CITIES    = {"68001": "Bucaramanga", "76001": "Cali"}
 TARGET    = "objetivo"
-TRAIN_END = 2023
+TRAIN_END = ANIO_FIN_TRAIN
 GENERATED_AT = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 

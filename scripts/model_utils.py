@@ -13,7 +13,10 @@ from sklearn.linear_model import LogisticRegression
 _eval_dir = os.path.join(os.path.dirname(__file__), "..", "src", "evaluation")
 if _eval_dir not in sys.path:
     sys.path.insert(0, _eval_dir)
-from metrics import metricas_alerta, inicios_vs_continuaciones  # noqa: F401  (re-exportadas)
+from metrics import metricas_alerta, inicios_vs_continuaciones  # noqa: F401
+from splits import ANIO_FIN_TRAIN  # noqa: F401  — TRAIN_END canónico = 2022
+
+EXPERIMENT = "sat-dengue"
 
 
 class PlattCalibrator:
@@ -31,26 +34,33 @@ class PlattCalibrator:
 
 def full_metrics(y_true, y_pred_bin, y_ini=None, y_score=None):
     """Wrapper sobre metricas_alerta + inicios_vs_continuaciones de src/evaluation/metrics.py.
-    Devuelve un dict con los mismos nombres de campo que los baselines para comparar en MLflow.
+    Claves de inicios llevan prefijo ini_ para coincidir con el registro de baselines.
     """
     m = metricas_alerta(y_true, y_pred_bin, y_score)
     if y_ini is not None:
-        m.update(inicios_vs_continuaciones(y_true, y_pred_bin, y_ini))
+        ini = inicios_vs_continuaciones(y_true, y_pred_bin, y_ini)
+        m.update({f"ini_{k}": v for k, v in ini.items()})
     return m
 
 
-def log_full_metrics(m, prefix="test"):
-    """Registra metricas en el run activo de MLflow con prefijo dado."""
+def log_full_metrics(m, prefix=None):
+    """Registra metricas en el run activo de MLflow.
+    Sin prefix: metricas globales sin prefijo (para coincidir con baselines en sat-dengue).
+    Con prefix: metricas de ciudad con {divipola}_ como prefijo.
+    """
     loggable = {k: v for k, v in m.items() if isinstance(v, (int, float)) and v == v}
-    mlflow.log_metrics({f"{prefix}_{k}": float(v) for k, v in loggable.items()})
+    if prefix:
+        mlflow.log_metrics({f"{prefix}_{k}": float(v) for k, v in loggable.items()})
+    else:
+        mlflow.log_metrics({k: float(v) for k, v in loggable.items()})
 
 
 def print_metrics(m, label="Test"):
     print(f"  {label}: sensibilidad={m['sensibilidad']:.3f} "
           f"prec={m['precision']:.3f} F1={m['f1']:.3f} "
           f"FAR={m['tasa_falsas_alarmas']:.3f}", end="")
-    if "inicios" in m:
-        print(f" | inicios {m['inicios_detectados']}/{m['inicios']}")
+    if "ini_inicios" in m:
+        print(f" | inicios {m['ini_inicios_detectados']}/{m['ini_inicios']}")
     else:
         print()
 

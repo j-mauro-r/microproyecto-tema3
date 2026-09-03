@@ -26,15 +26,14 @@ import pandas as pd
 from sklearn.metrics import average_precision_score, brier_score_loss, f1_score, roc_auc_score
 
 sys.path.insert(0, os.path.dirname(__file__))
-from model_utils import full_metrics, make_t2_target
+from model_utils import ANIO_FIN_TRAIN, EXPERIMENT, full_metrics, make_t2_target
 
 ROOT      = os.path.join(os.path.dirname(__file__), "..")
 DATA_PATH = os.path.join(ROOT, "data", "processed", "features_mensual.parquet")
 MODEL_DIR = os.path.join(ROOT, "model")
 
 TARGET    = "objetivo"
-TRAIN_END = 2023
-EXPERIMENT = "dengue-brote-clasico"
+TRAIN_END = ANIO_FIN_TRAIN
 
 CITIES = {"68001": "Bucaramanga", "76001": "Cali"}
 
