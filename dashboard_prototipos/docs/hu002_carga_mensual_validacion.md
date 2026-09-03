@@ -599,124 +599,124 @@ Revisar que no existan cambios fuera de:
 
 ### CA01 — Base HU001 preservada
 
-**Dado** HU001 integrada,  
-**cuando** se implementa HU002,  
+**Dado** HU001 integrada,
+**cuando** se implementa HU002,
 **entonces** health, request ID, errores, configuración y OpenAPI existentes continúan funcionando.
 
 ### CA02 — `reference_month` estricto
 
-**Dado** un mes de referencia,  
-**cuando** se valida,  
+**Dado** un mes de referencia,
+**cuando** se valida,
 **entonces** solo se acepta un mes calendario válido en formato `YYYY-MM`.
 
 ### CA03 — Archivo no vacío
 
-**Dado** un upload de cero bytes,  
-**cuando** se valida,  
+**Dado** un upload de cero bytes,
+**cuando** se valida,
 **entonces** se rechaza como `INVALID_UPLOAD` y no continúa a etapas posteriores.
 
 ### CA04 — Tamaño máximo configurable
 
-**Dado** un archivo mayor al límite configurado,  
-**cuando** se recibe,  
+**Dado** un archivo mayor al límite configurado,
+**cuando** se recibe,
 **entonces** se rechaza de forma controlada sin cargar innecesariamente más contenido en memoria.
 
 ### CA05 — Formato permitido
 
-**Dado** un archivo con formato no permitido por el contrato/configuración,  
-**cuando** se valida,  
+**Dado** un archivo con formato no permitido por el contrato/configuración,
+**cuando** se valida,
 **entonces** se rechaza antes del parsing de negocio.
 
 ### CA06 — SHA-256 reproducible
 
-**Dado** el mismo contenido,  
-**cuando** se calcula el hash en ejecuciones independientes,  
+**Dado** el mismo contenido,
+**cuando** se calcula el hash en ejecuciones independientes,
 **entonces** el SHA-256 es idéntico.
 
 ### CA07 — Metadata de carga
 
-**Dado** un archivo aceptado,  
-**cuando** termina la validación,  
+**Dado** un archivo aceptado,
+**cuando** termina la validación,
 **entonces** el resultado contiene al menos nombre original, tamaño, hash, periodo y tipo/formato cuando aplique.
 
 ### CA08 — Contrato estructural
 
-**Dado** que las fuentes definen columnas obligatorias,  
-**cuando** falta una,  
+**Dado** que las fuentes definen columnas obligatorias,
+**cuando** falta una,
 **entonces** el archivo se rechaza sin inventar una sustitución.
 
 Si las fuentes no permiten definir aún columnas exactas, el criterio queda documentado como dependencia explícita y no se marca falsamente como PASS.
 
 ### CA09 — Tipos básicos
 
-**Dado** que el contrato define tipos básicos,  
-**cuando** una columna esencial contiene un tipo incompatible,  
+**Dado** que el contrato define tipos básicos,
+**cuando** una columna esencial contiene un tipo incompatible,
 **entonces** la carga se rechaza de forma controlada.
 
 ### CA10 — Municipios soportados
 
-**Dado** un contrato que incluye DIVIPOLA,  
-**cuando** se valida la carga,  
+**Dado** un contrato que incluye DIVIPOLA,
+**cuando** se valida la carga,
 **entonces** Bucaramanga `68001` y Cali `76001` se reconocen según el alcance documentado y no se amplía silenciosamente a otros municipios.
 
 ### CA11 — Corte temporal
 
-**Dado** un archivo con temporalidad verificable,  
-**cuando** una observación está después de `reference_month`,  
+**Dado** un archivo con temporalidad verificable,
+**cuando** una observación está después de `reference_month`,
 **entonces** se rechaza o bloquea conforme a la regla documentada; nunca se utiliza silenciosamente.
 
 ### CA12 — Error contractual
 
-**Dado** un upload inválido,  
-**cuando** FastAPI responde,  
+**Dado** un upload inválido,
+**cuando** FastAPI responde,
 **entonces** utiliza `ErrorEnvelope`, `request_id`, código público existente y etapa `VALIDATING` cuando corresponda.
 
 ### CA13 — Sin Champion
 
-**Dado** cualquier archivo válido o inválido,  
-**cuando** HU002 lo procesa,  
+**Dado** cualquier archivo válido o inválido,
+**cuando** HU002 lo procesa,
 **entonces** no se carga ni ejecuta Champion, XGBoost, LightGBM, MLflow o artefacto equivalente.
 
 ### CA14 — Sin persistencia de archivos
 
-**Dado** una carga,  
-**cuando** finaliza la validación,  
+**Dado** una carga,
+**cuando** finaliza la validación,
 **entonces** el archivo no queda almacenado dentro del árbol Git del repositorio.
 
 ### CA15 — CORS POST mínimo
 
-**Dado** un origen permitido,  
-**cuando** realiza preflight para el endpoint mensual,  
+**Dado** un origen permitido,
+**cuando** realiza preflight para el endpoint mensual,
 **entonces** `POST` está permitido explícitamente; un origen no permitido sigue sin obtener `Access-Control-Allow-Origin`.
 
 ### CA16 — Endpoint delgado
 
-**Dado** el handler multipart,  
-**cuando** se inspecciona,  
+**Dado** el handler multipart,
+**cuando** se inspecciona,
 **entonces** delega la validación a un servicio reusable y no contiene parsing/validación extensa inline.
 
 ### CA17 — Sin respuesta futura inventada
 
-**Dado** que HU002 no ejecuta preparación/inferencia/persistencia,  
-**cuando** se revisa el comportamiento HTTP,  
+**Dado** que HU002 no ejecuta preparación/inferencia/persistencia,
+**cuando** se revisa el comportamiento HTTP,
 **entonces** no existe un `201 COMPLETED` con Champion/predicción/snapshot ficticios para aparentar el contrato final.
 
 ### CA18 — Tests focalizados
 
-**Dado** un checkout local con dependencias de HU001/HU002,  
-**cuando** se ejecutan los tests API,  
+**Dado** un checkout local con dependencias de HU001/HU002,
+**cuando** se ejecutan los tests API,
 **entonces** pasan sin red externa, DVC, AWS, MLflow, Champion ni datasets reales.
 
 ### CA19 — Alcance del PR
 
-**Dado** el diff contra `main`,  
-**cuando** se audita,  
+**Dado** el diff contra `main`,
+**cuando** se audita,
 **entonces** no existen cambios de frontend, entrenamiento, modelos, notebooks o datos no requeridos por HU002.
 
 ### CA20 — Gate HU003
 
-**Dado** HU002 terminada,  
-**cuando** HU003 recibe su salida,  
+**Dado** HU002 terminada,
+**cuando** HU003 recibe su salida,
 **entonces** dispone de una entrada validada, metadata/hash y brechas explícitas del contrato, sin tener que duplicar validaciones de upload.
 
 ---

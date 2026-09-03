@@ -1,7 +1,7 @@
 # HU002 — Evidencia de implementación DWP
 
-Fecha: 2026-09-02  
-Rama: `feature/hu002-monthly-upload-validation`  
+Fecha: 2026-09-02
+Rama: `feature/hu002-monthly-upload-validation`
 PR: [#22](https://github.com/j-mauro-r/microproyecto-tema3/pull/22)
 
 ## Resultado
