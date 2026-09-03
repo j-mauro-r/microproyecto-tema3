@@ -635,3 +635,56 @@ respuesta API
 ```
 
 Así, PR #12 puede cambiar su mecanismo interno mientras conserve el contrato de salida compatible con HU004.
+
+---
+
+## 20. Decisión vigente de integración — precedencia sobre secciones anteriores
+
+Esta sección fija la decisión arquitectónica vigente para evitar ambigüedad entre los dos modos descritos en HU004.
+
+### MVP: Modo B obligatorio
+
+Para el MVP académico BIOMAC, la integración primaria y requerida es:
+
+```text
+PR12 ChampionResult / JSON
+→ MaterializedOutputAdapter
+→ ChampionOutput
+```
+
+La razón es práctica: PR #12 ya entrega las salidas que necesita el dashboard (`probability`, `threshold`, `label`, `target_month`, municipio y horizonte). HU004 debe aprovechar ese contrato en lugar de duplicar la ejecución del modelo.
+
+### Evolución futura: Modo A opcional
+
+El camino ejecutable se conserva como alternativa futura:
+
+```text
+ChampionInput
+→ ExecutableChampionAdapter
+→ ChampionOutput
+```
+
+Implementar o desplegar Modo A **no es requisito para cerrar el MVP**. Cuando se adopte, debe reemplazar al provider activo mediante composición/configuración, no mediante cambios en HU005+.
+
+### No existe fallback automático A → B
+
+Los modos A y B son estrategias intercambiables, no una cadena de contingencia. Está prohibido intentar A y, ante error, cambiar silenciosamente a B. Un fallo del provider activo debe producir el error contractual correspondiente para preservar trazabilidad.
+
+### Contrato estable hacia HU005+
+
+Desde HU005 en adelante, ninguna HU puede depender de:
+
+- `ChampionResult` específico de PR #12;
+- archivos JSON físicos;
+- `generate_champion_output.py`;
+- pickle/XGBoost;
+- `.whl`;
+- `ChampionInput` como detalle del mecanismo de serving.
+
+La única frontera ML permitida para HU005+ es:
+
+```text
+ChampionOutput
+```
+
+En consecuencia, cambiar de Modo B a Modo A debe limitarse a HU004 y a la composición/configuración de dependencias. `ResultMapper`, persistencia, API, dashboard e historial deben permanecer sin refactoring estructural.
