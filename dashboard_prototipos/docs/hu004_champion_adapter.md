@@ -13,7 +13,8 @@
 - **Metodología:** DWP (Deep Work Plan)
 - **Dependencia previa:** HU003 — Adaptación mínima al contrato del Champion `[COMPLETADA]`
 - **Habilita:** HU005 — Orquestación del run mensual (`HU-INT-005`)
-- **Gate posterior:** HU005 puede iniciar cuando HU004 soporte de forma estable tanto la ejecución directa de un Champion como el consumo del `ChampionResult` entregado por PR #12, conservando thresholds por predicción/horizonte y sin inventar datos.
+- **Gate posterior:** HU005 puede iniciar al recibir un `ChampionOutputProvider` configurado.
+  El MVP usa `MaterializedChampionProvider`; la ruta ejecutable no es requisito del MVP.
 
 ### Fuentes de verdad
 
@@ -282,6 +283,19 @@ Para `output_type == "probability"`:
 
 ## 8. Interfaces de integración
 
+### 8.0 Frontera única para HU005+
+
+```python
+class ChampionOutputProvider(Protocol):
+    def produce(self, context: ChampionExecutionContext) -> ChampionOutput: ...
+```
+
+`ExecutableChampionProvider` y `MaterializedChampionProvider` cumplen esta misma
+interfaz. El contexto selecciona una única entrada compatible con el provider activo;
+una combinación incorrecta falla con `CHAMPION_INPUT_INVALID`. La fábrica
+`build_champion_output_provider` realiza la selección explícita por composición y nunca
+captura fallos para cambiar de estrategia.
+
 ### 8.1 Puerto estable
 
 ```python
@@ -535,7 +549,8 @@ Pendiente Mauricio: materializar el mecanismo acordado y ejecutar smoke test rea
 
 ### T17 — Handoff HU005
 
-HU005 debe poder trabajar exclusivamente con `ChampionOutput` sin distinguir si vino de ejecución directa o de salida PR #12.
+HU005 debe invocar exclusivamente `ChampionOutputProvider.produce(context)` y recibir
+`ChampionOutput`, sin distinguir si vino de ejecución directa o de salida PR #12.
 
 ---
 
@@ -561,8 +576,8 @@ HU005 debe poder trabajar exclusivamente con `ChampionOutput` sin distinguir si 
 - **CA18:** ejecución directa conserva load-once.
 - **CA19:** errores se saneán sin secretos/path internos.
 - **CA20:** tests funcionan sin AWS/red.
-- **CA21:** `ChampionOutput` sirve como única dependencia ML de HU005.
-- **CA22:** código y evidencia reflejan explícitamente compatibilidad con PR #12.
+- **CA21:** `ChampionOutputProvider` y `ChampionOutput` son las únicas dependencias ML de HU005.
+- **CA22:** ambos providers son intercambiables para el mismo consumer y no existe fallback.
 
 ---
 
@@ -692,10 +707,10 @@ Desde HU005 en adelante, ninguna HU puede depender de:
 - `.whl`;
 - `ChampionInput` como detalle del mecanismo de serving.
 
-La única frontera ML permitida para HU005+ es:
+La única operación ML permitida para HU005+ es:
 
 ```text
-ChampionOutput
+ChampionOutputProvider.produce(context) → ChampionOutput
 ```
 
 En consecuencia, cambiar de Modo B a Modo A debe limitarse a HU004 y a la composición/configuración de dependencias. `ResultMapper`, persistencia, API, dashboard e historial deben permanecer sin refactoring estructural.

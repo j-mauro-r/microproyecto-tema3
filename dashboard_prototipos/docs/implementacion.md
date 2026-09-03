@@ -648,12 +648,16 @@ No es requisito para HU005 ni para cerrar el MVP. No debe utilizarse como fallba
 
 ### Regla para HU005–HU010
 
-A partir de HU005, el backlog debe tratar `ChampionOutput` como la **única frontera ML estable**. Las HUs posteriores no pueden depender de `ChampionResult`, JSON físico, `generate_champion_output.py`, pickle/XGBoost, `.whl` o de cómo se produjo la predicción.
+A partir de HU005, el orquestador debe recibir un `ChampionOutputProvider` y llamar una
+única operación `produce(context)`. Su resultado es siempre `ChampionOutput`. Las HUs
+posteriores no pueden depender de `ChampionResult`, JSON físico,
+`generate_champion_output.py`, pickle/XGBoost, `.whl` o de cómo se produjo la predicción.
 
 Por tanto, los flujos posteriores deben conceptualizarse así:
 
 ```text
-HU004 provider activo
+ChampionOutputProvider configurado
+→ produce(context)
 → ChampionOutput
 → HU005 ResultMapper/orquestación
 → HU006 persistencia

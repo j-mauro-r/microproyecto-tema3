@@ -15,19 +15,33 @@ from api.app.champion.materialized import (
     MaterializedOutputAdapter,
 )
 from api.app.champion.port import ChampionAdapter
+from api.app.champion.provider import (
+    ChampionExecutionContext,
+    ChampionOutputProvider,
+    ChampionProviderStrategy,
+    ExecutableChampionProvider,
+    MaterializedChampionProvider,
+    build_champion_output_provider,
+)
 
 __all__ = [
     "ChampionAdapter",
     "ChampionLoader",
     "ChampionMetadata",
     "ChampionOutput",
+    "ChampionOutputProvider",
     "ChampionPrediction",
+    "ChampionExecutionContext",
+    "ChampionProviderStrategy",
     "ChampionRuntime",
     "LazyChampionAdapter",
     "MUNICIPALITY_NAMES",
     "MaterializedChampionPrediction",
     "MaterializedChampionResult",
     "MaterializedOutputAdapter",
+    "ExecutableChampionProvider",
+    "MaterializedChampionProvider",
     "NativePrediction",
     "build_champion_adapter",
+    "build_champion_output_provider",
 ]

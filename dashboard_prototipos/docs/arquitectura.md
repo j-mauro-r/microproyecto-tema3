@@ -642,9 +642,12 @@ Esta sección tiene precedencia sobre referencias anteriores que presenten la ej
 La arquitectura lógica queda fijada así:
 
 ```text
-                ┌─────────────────────────────┐
-MVP / Modo B →  │ MaterializedOutputAdapter   │
-                └──────────────┬──────────────┘
+                ┌──────────────────────────────┐
+MVP / Modo B →  │ MaterializedChampionProvider │
+                └──────────────┬───────────────┘
+                               │
+                               v
+                    ChampionOutputProvider
                                │
                                v
                         ChampionOutput
@@ -653,12 +656,13 @@ MVP / Modo B →  │ MaterializedOutputAdapter   │
                          HU005 y siguientes
                                ^
                                │
-                ┌──────────────┴──────────────┐
-Futuro / A  →   │ ExecutableChampionAdapter  │
-                └─────────────────────────────┘
+                ┌──────────────┴───────────────┐
+Futuro / A  →   │ ExecutableChampionProvider  │
+                └──────────────────────────────┘
 ```
 
-`ChampionOutput` es la frontera estable entre integración ML y aplicación.
+`ChampionOutputProvider.produce(context) → ChampionOutput` es la frontera estable entre
+integración ML y aplicación.
 
 ### 28.2 Estrategia del MVP
 
@@ -690,7 +694,9 @@ Los dos adapters son **alternativas configurables**. No existe fallback automát
 
 ### 28.5 Regla para componentes posteriores
 
-`MonthlyPredictionOrchestrator`, `ResultMapper`, `PredictionRepository`, FastAPI y Lovable solo pueden depender del contrato `ChampionOutput`. Queda prohibido acoplar HU005+ a:
+`MonthlyPredictionOrchestrator` debe depender solo de `ChampionOutputProvider` y
+`ChampionOutput`; los componentes posteriores consumen `ChampionOutput`. Queda
+prohibido acoplar HU005+ a:
 
 - estructura concreta `ChampionResult` de PR #12;
 - archivos JSON físicos;
