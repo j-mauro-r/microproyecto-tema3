@@ -22,6 +22,27 @@ def _cors_origins(value: str) -> tuple[str, ...]:
     return origins
 
 
+def _positive_int(value: str, name: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer") from exc
+    if parsed <= 0:
+        raise ValueError(f"{name} must be greater than zero")
+    return parsed
+
+
+def _upload_extensions(value: str) -> tuple[str, ...]:
+    extensions = tuple(
+        sorted({item.strip().lower() for item in value.split(",") if item.strip()})
+    )
+    if "*" in extensions:
+        raise ValueError("BIOMAC_UPLOAD_ALLOWED_EXTENSIONS must be an explicit allowlist")
+    if any(not extension.startswith(".") or "/" in extension for extension in extensions):
+        raise ValueError("upload extensions must start with '.' and contain no path")
+    return extensions
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     service_name: str
@@ -29,6 +50,8 @@ class Settings:
     environment: str
     debug: bool
     cors_origins: tuple[str, ...]
+    upload_max_bytes: int = 10 * 1024 * 1024
+    upload_allowed_extensions: tuple[str, ...] = (".csv",)
 
 
 @lru_cache
@@ -44,5 +67,12 @@ def get_settings() -> Settings:
                 "BIOMAC_CORS_ORIGINS",
                 "http://localhost:3000,http://localhost:5173,http://localhost:8050",
             )
+        ),
+        upload_max_bytes=_positive_int(
+            os.getenv("BIOMAC_UPLOAD_MAX_BYTES", str(10 * 1024 * 1024)),
+            "BIOMAC_UPLOAD_MAX_BYTES",
+        ),
+        upload_allowed_extensions=_upload_extensions(
+            os.getenv("BIOMAC_UPLOAD_ALLOWED_EXTENSIONS", ".csv")
         ),
     )

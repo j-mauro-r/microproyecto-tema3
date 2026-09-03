@@ -8,6 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from api.app.schemas.errors import ErrorCode, ErrorDetail, ErrorEnvelope
+from api.app.domain.errors import ContractError
 
 
 def _request_id(request: Request) -> UUID:
@@ -57,7 +58,21 @@ async def unexpected_exception_handler(request: Request, _exc: Exception) -> JSO
     )
 
 
+async def contract_error_handler(request: Request, exc: ContractError) -> JSONResponse:
+    return _response(
+        exc.status_code,
+        ErrorDetail(
+            code=exc.code,
+            message=exc.message,
+            request_id=_request_id(request),
+            stage=exc.stage,
+            details=exc.details,
+        ),
+    )
+
+
 def register_error_handlers(app: FastAPI) -> None:
+    app.add_exception_handler(ContractError, contract_error_handler)
     app.add_exception_handler(RequestValidationError, request_validation_handler)
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(Exception, unexpected_exception_handler)
