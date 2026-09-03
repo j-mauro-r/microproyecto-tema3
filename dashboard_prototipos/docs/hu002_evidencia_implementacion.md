@@ -3,150 +3,223 @@
 Fecha: 2026-09-02
 Rama: `feature/hu002-monthly-upload-validation`
 PR: [#22](https://github.com/j-mauro-r/microproyecto-tema3/pull/22)
+Estado: **PASS**
 
 ## Resultado
 
-HU002 implementa una frontera multipart delgada y un validador offline reusable. La
-configuración de producción falla de forma cerrada porque las fuentes no fijan un
-formato mensual canónico. No se devuelve un `201`: una carga válida bajo un contrato
-inyectado termina en `503 CHAMPION_NOT_READY`, etapa `VALIDATING`, hasta que HU003+
-implemente el resto del pipeline real.
+HU002 recibe un CSV UTF-8/UTF-8-SIG de un único mes, exige exactamente una fila
+de Bucaramanga y una de Cali, valida las 39 features numéricas del Champion y
+produce un `ValidatedMonthlyUpload` en memoria. No calcula features ni carga o
+ejecuta modelos. El endpoint conserva temporalmente `503 CHAMPION_NOT_READY`
+después de una validación exitosa y nunca fabrica un `201 COMPLETED`.
 
-## Fuentes revisadas completamente
+## Fuente y auditoría del contrato Champion
 
-- `hu002_carga_mensual_validacion.md` (fuente de verdad)
-- `arquitectura.md`, `implementacion.md`, `API-sign.md`, `plan.md`
-- `diccionario-de-datos.md`, `HU-MVP-FastAPI-dashboard.md`
-- `hu001_base_fastapi_contratos.md`, `hu001_evidencia_implementacion.md`
-- implementación y tests bajo `api/`
+Fuente complementaria: PR #12, head `74e385c3`:
 
-## T02 — Contrato real y brechas
+- `model/xgb_clasico_meta.json`, blob Git `791f21d5`;
+- `scripts/train_clasico_model.py`;
+- `scripts/generate_predictions.py`;
+- `scripts/calibrate_models.py`;
+- `src/features/build_features.py`;
+- inspección estática, sin deserializar, de los artefactos XGBoost.
 
-| Elemento | Evidencia encontrada | Estado |
-|---|---|---|
-| Transporte | `multipart/form-data`: `file` y `reference_month` | Definido |
-| Mes de referencia | mes calendario estricto `YYYY-MM` | Definido |
-| Metadata | nombre original, bytes, SHA-256; content type cuando aplique | Definido |
-| Municipios de alcance | Bucaramanga `68001`, Cali `76001` | Definido, pero sin columna mensual canónica |
-| Formato/extensión | no hay una extensión mensual única e inequívoca | Brecha |
-| Columnas obligatorias | no existe lista canónica del archivo operacional | Brecha |
-| Campo temporal | no está identificado para el archivo mensual | Brecha |
-| Campo DIVIPOLA | no está identificado para el archivo mensual | Brecha |
-| Tipos básicos | no existe esquema de tipos del archivo mensual | Brecha |
-| Restricción fila-periodo | se exige evitar futuro, pero falta campo temporal canónico | Brecha |
+La metadata define 39 features. Los 39 nombres aparecen en el mismo orden en
+`xgb_clasico.pkl`, `xgb_clasico_T1.pkl`, `xgb_clasico_T2.pkl` y
+`xgb_clasico_calibrated.pkl`. Los scripts consumen `model.feature_names_in_` o
+el campo `features` del paquete calibrado. **No se encontró divergencia.**
 
-Los CSV/paneles usados por entrenamiento no se reinterpretaron como contrato de la
-carga operacional. La allowlist por defecto es deliberadamente vacía. Los tests usan
-un contrato CSV sintético e inyectado únicamente para probar la infraestructura; no
-lo presentan como contrato productivo.
+Hashes SHA-256 observados:
+
+- contrato ordenado (`"\n".join(feature_names)`):
+  `786ef0b5be829efe763e6c3eea385f90660e5bc191bf1469e02885d02e95e5ba`;
+- artefacto T+1 canónico: `ddc8f6eeaf1bc2af304d3759c783e88d58576937ce7c62148b4c9280bab93f9d`;
+- artefacto T+2: `47bed65a6e4670b98ed682b3f13b718aa89321ad1ef7feb232a6e3c063278a91`.
+
+La definición se centralizó en `api/app/domain/champion_feature_contract.py`
+con versión `pr12-74e385c3`; validator, endpoint y tests no mantienen listas
+paralelas.
+
+### Features, en orden contractual
+
+```text
+temp_mean_c
+dewpoint_mean_c
+rain_mm_day
+soil_water_l1_mean
+surface_runoff_mm_day
+total_evaporation_mm_day_ecmwf
+wind_u_mean_ms
+wind_v_mean_ms
+solar_radiation_mj_m2_day
+casos_grave_lag_1
+casos_grave_lag_2
+casos_grave_lag_3
+casos_grave_lag_4
+casos_grave_lag_6
+casos_grave_roll3
+casos_clasico_lag_1
+casos_clasico_lag_2
+casos_clasico_lag_3
+casos_clasico_lag_4
+casos_clasico_lag_6
+casos_clasico_roll3
+temp_mean_c_lag_1
+temp_mean_c_lag_2
+temp_mean_c_lag_3
+rain_mm_day_lag_1
+rain_mm_day_lag_2
+rain_mm_day_lag_3
+mes_sin
+mes_cos
+p25
+p75
+zona_canal
+sir
+es_endemico
+brote
+p25_objetivo
+p75_objetivo
+zona_objetivo
+brote_lag_1
+```
+
+## Contrato CSV final
+
+| Regla | Implementación |
+|---|---|
+| Formato | solo `.csv`, default productivo `(".csv",)` |
+| Encoding | UTF-8 o UTF-8-SIG estricto |
+| Identificadores | `divipola`, `anio`, `mes` |
+| Periodo | todas las filas coinciden exactamente con `reference_month` |
+| Granularidad | dos filas: una `68001` y una `76001` |
+| Unicidad | sin municipio/mes duplicado ni municipio adicional |
+| Features | las 39 anteriores, presentes y numéricas finitas |
+| Faltantes | vacío, `NaN`, `inf` y `-inf` rechazados; no hay imputación |
+| Prohibidas | `objetivo`, `casos_objetivo`, `anio_objetivo`, `mes_objetivo`, `es_inicio`, `__target_t2`, `observed_label` |
+| Seguridad | límite configurable, nombre reducido a basename, lectura acotada |
+| Trazabilidad | nombre, content type, tamaño y SHA-256 de bytes originales |
+
+El resultado conserva solo identificadores + features requeridas en sus filas
+efectivas. Ninguna columna auxiliar puede incorporarse accidentalmente al input
+que recibirá HU003.
+
+### Ejemplo sintético mínimo
+
+El fixture automatizado genera exclusivamente datos contractuales de prueba:
+
+```csv
+divipola,anio,mes,<39 features en el orden contractual>
+68001,2026,1,<39 valores numéricos sintéticos>
+76001,2026,1,<39 valores numéricos sintéticos>
+```
+
+No representa observaciones epidemiológicas reales ni se versiona como dataset.
 
 ## T01–T12
 
 | Tarea | Estado | Evidencia |
 |---|---|---|
-| T01 | PASS | `main` actualizado en la base; HU001: 19 tests verdes antes de cambios |
-| T02 | PASS | auditoría y tabla de brechas anterior |
-| T03 | PASS | límite y allowlist centralizados, con overrides y validación |
-| T04 | PASS | contrato, metadata y resultado inmutables y reusables |
-| T05 | PASS | validador puro sin FastAPI, red ni disco |
-| T06 | PASS | `ContractError` mapeado a `ErrorEnvelope`, `request_id`, `VALIDATING` |
-| T07 | PASS | handler multipart delega al validador |
-| T08 | PASS | CORS mínimo GET/POST y `python-multipart` |
-| T09 | PASS | 40 tests offline verdes |
-| T10 | PASS | auditoría sin HU003+, ML, DVC, AWS, S3 ni persistencia |
-| T11 | PASS | este documento |
-| T12 | PASS | gates finales indicados abajo |
+| T01 | PASS | fetch/switch/pull ff-only; regresión inicial 40 tests |
+| T02 | PASS | metadata, scripts y artefactos PR #12 contrastados sin carga de modelo |
+| T03 | PASS | contrato centralizado CSV/identificadores/features/targets |
+| T04 | PASS | `anio+mes` exactos y un solo `reference_month` |
+| T05 | PASS | exactamente 68001/76001, sin ausencias/extras/duplicados |
+| T06 | PASS | 39 features obligatorias, numéricas, finitas y no nulas |
+| T07 | PASS | siete targets/futuros rechazados y filas efectivas filtradas |
+| T08 | PASS | tamaño, vacío, hash, envelope, request ID y CORS preservados |
+| T09 | PASS | endpoint multipart delgado; validación delegada, sin modelo |
+| T10 | PASS | 54 tests rápidos y offline |
+| T11 | PASS | evidencia reemplazada por este documento |
+| T12 | PASS | gates finales y diff focalizado |
 
-## Criterios de aceptación CA01–CA20
+## CA01–CA20
 
-| Criterio | Estado | Nota |
+| CA | Estado | Evidencia |
 |---|---|---|
-| CA01 | PASS | health, request ID, errores, settings y OpenAPI preservados |
-| CA02 | PASS | mes estricto y calendario válido |
+| CA01 | PASS | health/OpenAPI/errores HU001 continúan verdes |
+| CA02 | PASS | regex y mes calendario estricto |
 | CA03 | PASS | cero bytes → `INVALID_UPLOAD` |
-| CA04 | PASS | límite configurable y lectura HTTP acotada |
-| CA05 | PASS | allowlist explícita; producción falla cerrada |
-| CA06 | PASS | SHA-256 determinista |
-| CA07 | PASS | nombre seguro, tamaño, hash, periodo y content type |
-| CA08 | BLOCKED_BY_CONTRACT | no hay columnas mensuales canónicas |
-| CA09 | BLOCKED_BY_CONTRACT | no hay tipos mensuales canónicos |
-| CA10 | BLOCKED_BY_CONTRACT | códigos definidos, columna DIVIPOLA no definida |
-| CA11 | BLOCKED_BY_CONTRACT | regla reusable, columna temporal no definida |
-| CA12 | PASS | envelope contractual, etapa y request ID coherentes |
-| CA13 | PASS | no se importa ni ejecuta Champion/ML |
-| CA14 | PASS | contenido solo en memoria; sin escritura |
-| CA15 | PASS | POST permitido solo para origen explícito |
-| CA16 | PASS | transporte separado del validador |
-| CA17 | PASS | carga válida configurada responde 503, nunca éxito ficticio |
-| CA18 | PASS | suite focalizada offline |
-| CA19 | PASS | diff limitado a API, tests, dependencia y docs HU002 |
-| CA20 | PASS | entrega bytes validados, metadata/hash y brechas explícitas |
+| CA04 | PASS | lectura HTTP corta al exceder límite |
+| CA05 | PASS | solo `.csv` habilitado |
+| CA06 | PASS | SHA-256 determinista probado |
+| CA07 | PASS | nombre seguro, bytes, hash, periodo y content type |
+| CA08 | PASS | cualquier feature faltante se rechaza |
+| CA09 | PASS | string, vacío, NaN e infinitos se rechazan |
+| CA10 | PASS | exactamente Buca+Cali, una fila por municipio |
+| CA11 | PASS | todas las filas coinciden con el corte |
+| CA12 | PASS | targets rechazados y resultado efectivo filtrado |
+| CA13 | PASS | no cálculo ni imputación de features |
+| CA14 | PASS | sin Champion, ML/cloud o persistencia |
+| CA15 | PASS | request ID y `VALIDATING` contractuales |
+| CA16 | PASS | CORS POST solo para allowlist |
+| CA17 | PASS | válido → 503 temporal, nunca 201 ficticio |
+| CA18 | PASS | validator puro y reusable |
+| CA19 | PASS | suite completa offline |
+| CA20 | PASS | diff limitado a HU002 |
 
-Resultado: **16 PASS, 0 FAIL, 4 BLOCKED_BY_CONTRACT**.
+Resultado: **20 PASS, 0 FAIL, 0 BLOCKED**.
 
-## Autovalidaciones AV01–AV20
+## AV01–AV20
 
 | AV | Estado | Evidencia |
 |---|---|---|
-| AV01 | PASS | regresión HU001 incluida en los 40 tests |
-| AV02 | PASS | defaults/overrides y valores inseguros probados |
-| AV03 | PASS | meses válidos aceptados por el validador |
-| AV04 | PASS | formatos y meses calendario inválidos rechazados |
-| AV05 | PASS | archivo vacío rechazado |
-| AV06 | PASS | límite puro y frontera HTTP probados |
-| AV07 | PASS | extensión aceptada/rechazada bajo contrato inyectado |
-| AV08 | PASS | hash igual/diferente verificado |
-| AV09 | PASS | UTF-8/CSV corrupto produce error controlado |
-| AV10 | BLOCKED_BY_CONTRACT | prueba reusable existe; falta lista real de columnas |
-| AV11 | BLOCKED_BY_CONTRACT | faltan tipos contractuales; no se inventaron |
-| AV12 | BLOCKED_BY_CONTRACT | infraestructura limita 68001/76001; falta campo real |
-| AV13 | BLOCKED_BY_CONTRACT | infraestructura rechaza futuro; falta campo real |
-| AV14 | PASS | request ID coincide en header/envelope |
-| AV15 | PASS | preflight permitido y origen ajeno sin allow-origin |
-| AV16 | PASS | auditoría estática sin módulos o conexiones ML/cloud |
-| AV17 | PASS | tests no crean archivos de carga |
-| AV18 | PASS | revisión manual del handler |
-| AV19 | PASS | no hay `201 COMPLETED` ni entidades futuras ficticias |
-| AV20 | PASS | `git diff --name-only main...HEAD` revisado |
+| AV01 | PASS | regresión HU001 incluida |
+| AV02 | PASS | settings y default `.csv` probados |
+| AV03 | PASS | enero y diciembre válidos |
+| AV04 | PASS | meses inválidos rechazados |
+| AV05 | PASS | vacío rechazado |
+| AV06 | PASS | oversized rechazado |
+| AV07 | PASS | CSV válido y XLSX rechazado |
+| AV08 | PASS | hash igual/diferente comprobado |
+| AV09 | PASS | CSV/UTF-8 corrupto controlado |
+| AV10 | PASS | feature retirada produce `missing_columns` |
+| AV11 | PASS | feature inválida produce `invalid_numeric_features` |
+| AV12 | PASS | válido, faltantes, duplicado y tercero probados |
+| AV13 | PASS | fila de otro mes rechazada |
+| AV14 | PASS | targets rechazados antes de resultado efectivo |
+| AV15 | PASS | request ID coincide entre header/envelope |
+| AV16 | PASS | CORS permitido/denegado probado |
+| AV17 | PASS | import limpio sin MLflow/DVC/AWS/modelos |
+| AV18 | PASS | validación solo en memoria; árbol permanece limpio |
+| AV19 | PASS | carga válida sin éxito/predicción ficticia |
+| AV20 | PASS | alcance revisado con diff contra main |
 
-Resultado: **16 PASS, 0 FAIL, 4 BLOCKED_BY_CONTRACT**.
-
-## Configuración y dependencia
-
-- `BIOMAC_UPLOAD_MAX_BYTES`: entero positivo; default 10 MiB.
-- `BIOMAC_UPLOAD_ALLOWED_EXTENSIONS`: allowlist explícita; default vacío.
-- `python-multipart>=0.0.9,<1`; versión validada localmente: `0.0.32`.
-- Contrato inyectable para columnas, temporalidad y municipio cuando las fuentes lo definan.
+Resultado: **20 PASS, 0 FAIL, 0 BLOCKED**.
 
 ## Comandos y resultados
 
 ```text
 git fetch origin --prune                                      PASS
-git merge-base HEAD origin/main                              b5868302 (base actual)
-.venv/bin/python -m pytest api/tests -q                      40 passed, 1 warning
-.venv/bin/python -m compileall -q api                        PASS
-.venv/bin/python -m pip check                                No broken requirements found
-git diff --check main...HEAD                                 PASS
-git diff --name-only main...HEAD                             scope HU002 esperado
+git switch feature/hu002-monthly-upload-validation           PASS
+git pull --ff-only origin feature/hu002-monthly-upload-validation PASS
+python -m pytest api/tests -q                                 54 passed, 1 warning
+python -m compileall -q api                                   PASS
+python -m pip check                                           No broken requirements found
+git diff --check main...HEAD                                  PASS
+git diff --name-only main...HEAD                              alcance HU002 esperado
 ```
 
-La única advertencia es una deprecación de `starlette.testclient` respecto de `httpx`;
-no es conflicto de dependencias ni fallo funcional de HU002.
+La advertencia única es `StarletteDeprecationWarning` de `TestClient`/`httpx` y
+no afecta el contrato ni indica una dependencia rota.
 
-## Diff y limitaciones
+## Limitaciones y gate HU003
 
-El diff contiene `api/app` (configuración, dominio, error, route y wiring), `api/tests`,
-`requirements.txt` y los documentos HU002. No toca frontend, datos, notebooks,
-entrenamiento ni modelos. No usa MLflow, DVC, AWS/S3, inferencia o persistencia.
+- HU002 no interpreta MIME como prueba de contenido; extensión y parsing UTF-8
+  real son autoritativos.
+- El contrato proviene del artefacto temporal de PR #12; un nuevo Champion debe
+  actualizar versión, lista/hash y pruebas de forma conjunta.
+- HU003 recibirá bytes/filas ya validados y se limitará a seleccionar y ordenar
+  estas features para construir `ChampionInput`.
+- Lags, rolling, canal, SIR, `mes_sin`/`mes_cos` y demás feature engineering
+  permanecen explícitamente postergados. HU002 solo valida valores precalculados.
+- No se cargó/deserializó ningún pickle, no se ejecutó Champion y no se usaron
+  MLflow, DVC, AWS/S3, datasets reales ni persistencia.
 
-La API no puede aceptar productivamente un formato hasta resolver las brechas. El
-soporte parser CSV existe como capacidad explícitamente configurable y testeable,
-pero no se activa por defecto ni afirma que CSV sea el formato contractual.
+## Diff final
 
-## Gate HU003
-
-Antes de habilitar un formato productivo o continuar a preparación debe aprobarse un
-contrato inequívoco con: extensión/formato, columnas, tipos, campo temporal, campo
-DIVIPOLA y reglas de presencia/periodo. HU003 podrá consumir
-`ValidatedMonthlyUpload` sin duplicar tamaño, vacío, allowlist, hash o metadata; no
-debe avanzar mientras CA08–CA11/AV10–AV13 permanezcan bloqueados.
+El cambio incremental de la nueva definición modifica únicamente contrato y
+validator bajo `api/app/domain`, default CSV en configuración, tests HU002 y
+esta evidencia. El diff total del PR conserva además la ruta multipart, wiring,
+errores, dependencia `python-multipart` y la propia definición HU002. No hay
+cambios en `src/`, `scripts/`, `model/`, datos, notebooks o frontend.
