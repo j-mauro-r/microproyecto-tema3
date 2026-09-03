@@ -615,3 +615,52 @@ El flujo se considera implementado cuando:
 - artefactos/datos pesados se versionan/materializan fuera del request normal;
 - pruebas de contrato, integración, deployment y E2E pasan;
 - entrenamiento y selección del Champion permanecen fuera de este alcance.
+
+---
+
+## 6. Decisión de implementación vigente — HU004 como frontera intercambiable
+
+Esta sección tiene precedencia sobre referencias anteriores que describan la ejecución directa del Champion como única vía del MVP.
+
+### Camino requerido para el MVP
+
+HU004 implementará primero el consumo de la salida materializada de PR #12:
+
+```text
+ChampionResult PR12
+→ MaterializedOutputAdapter
+→ ChampionOutput
+```
+
+Este es el camino requerido para cerrar HU004 en el MVP.
+
+### Camino futuro opcional
+
+La ejecución directa permanece como evolución compatible:
+
+```text
+ChampionInput
+→ ExecutableChampionAdapter
+→ ChampionOutput
+```
+
+No es requisito para HU005 ni para cerrar el MVP. No debe utilizarse como fallback automático del camino materializado ni viceversa.
+
+### Regla para HU005–HU010
+
+A partir de HU005, el backlog debe tratar `ChampionOutput` como la **única frontera ML estable**. Las HUs posteriores no pueden depender de `ChampionResult`, JSON físico, `generate_champion_output.py`, pickle/XGBoost, `.whl` o de cómo se produjo la predicción.
+
+Por tanto, los flujos posteriores deben conceptualizarse así:
+
+```text
+HU004 provider activo
+→ ChampionOutput
+→ HU005 ResultMapper/orquestación
+→ HU006 persistencia
+→ HU007 API read-only
+→ HU008 dashboard
+→ HU009 metadata/explicabilidad
+→ HU010 E2E
+```
+
+Cambiar en el futuro de `MaterializedOutputAdapter` a `ExecutableChampionAdapter` debe requerir únicamente cambios de HU004/composición/configuración, sin refactor estructural de HU005+.
