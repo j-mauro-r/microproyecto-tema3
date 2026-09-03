@@ -98,15 +98,16 @@ def evaluate(pkg, df, horizonte):
         metrics["brier_before_cal"] = pkg.get("brier_before", float("nan"))
         metrics["brier_after_cal"]  = pkg.get("brier_after",  float("nan"))
 
-    m_global = full_metrics(y_te, pred_te, y_ini)
-    metrics.update({f"test_{k}": float(v) for k, v in m_global.items()})
+    m_global = full_metrics(y_te, pred_te, y_ini, y_score=p_te)
+    metrics.update({f"test_{k}": float(v) for k, v in m_global.items() if isinstance(v, (int, float)) and v == v})
 
     for div, city in CITIES.items():
         mask = (test["divipola"].astype(str) == div).values
         if mask.sum() < 5: continue
         m_c = full_metrics(y_te[mask], pred_te[mask],
-                           y_ini[mask] if y_ini is not None else None)
-        metrics.update({f"test_{div}_{k}": float(v) for k, v in m_c.items()})
+                           y_ini[mask] if y_ini is not None else None,
+                           y_score=p_te[mask])
+        metrics.update({f"test_{div}_{k}": float(v) for k, v in m_c.items() if isinstance(v, (int, float)) and v == v})
 
     return metrics
 

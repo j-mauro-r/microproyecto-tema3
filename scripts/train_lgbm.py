@@ -124,7 +124,7 @@ def main():
             "best_iteration": int(model.best_iteration_),
         })
 
-        m_te = full_metrics(y_te, pred_te, y_ini_te)
+        m_te = full_metrics(y_te, pred_te, y_ini_te, y_score=prob_te)
         log_full_metrics(m_te, prefix="test")
         print(f"\nT+{H} | AUROC={te_auroc:.4f} AP={te_ap:.4f} thr={best_thr:.2f}")
         print_metrics(m_te, f"Global T+{H}")
@@ -135,7 +135,7 @@ def main():
                 continue
             y_c = y_te[mask]; pr_c = prob_te[mask]
             ini_c = y_ini_te[mask] if y_ini_te is not None else None
-            m_c = full_metrics(y_c, (pr_c >= best_thr).astype(int), ini_c)
+            m_c = full_metrics(y_c, (pr_c >= best_thr).astype(int), ini_c, y_score=pr_c)
             log_full_metrics(m_c, prefix=f"test_{div}")
             print_metrics(m_c, f"{city} ({div})")
 

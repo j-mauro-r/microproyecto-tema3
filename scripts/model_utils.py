@@ -1,9 +1,19 @@
 """Utilidades de evaluacion compartidas entre scripts de entrenamiento SAT-Dengue.
-Calcula el set de metricas del contrato de API v1.1.0.
+Delega en src/evaluation/metrics.py para que los nombres de metrica coincidan
+con los baselines y se puedan comparar en una sola tabla de MLflow.
 """
+import os
+import sys
+
 import numpy as np
 import mlflow
 from sklearn.linear_model import LogisticRegression
+
+# Importar funciones canonicas de metricas desde src/evaluation/metrics.py
+_eval_dir = os.path.join(os.path.dirname(__file__), "..", "src", "evaluation")
+if _eval_dir not in sys.path:
+    sys.path.insert(0, _eval_dir)
+from metrics import metricas_alerta, inicios_vs_continuaciones  # noqa: F401  (re-exportadas)
 
 
 class PlattCalibrator:
@@ -19,51 +29,28 @@ class PlattCalibrator:
         return self._lr.predict_proba(np.array(probs).reshape(-1, 1))[:, 1]
 
 
-def full_metrics(y_true, y_pred_bin, y_ini=None):
-    """Calcula recall, precision, F1, false_alarm_rate y deteccion de inicios."""
-    y_true = np.asarray(y_true, dtype=int)
-    y_pred_bin = np.asarray(y_pred_bin, dtype=int)
-
-    tp = int(((y_pred_bin == 1) & (y_true == 1)).sum())
-    fp = int(((y_pred_bin == 1) & (y_true == 0)).sum())
-    fn = int(((y_pred_bin == 0) & (y_true == 1)).sum())
-    tn = int(((y_pred_bin == 0) & (y_true == 0)).sum())
-
-    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
-    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
-    f1 = 2 * recall * precision / (recall + precision) if (recall + precision) > 0 else 0.0
-    false_alarm_rate = fp / (fp + tn) if (fp + tn) > 0 else 0.0
-
-    m = {
-        "recall": round(recall, 4),
-        "precision": round(precision, 4),
-        "f1": round(f1, 4),
-        "false_alarm_rate": round(false_alarm_rate, 4),
-        "sample_size": int(len(y_true)),
-    }
-
+def full_metrics(y_true, y_pred_bin, y_ini=None, y_score=None):
+    """Wrapper sobre metricas_alerta + inicios_vs_continuaciones de src/evaluation/metrics.py.
+    Devuelve un dict con los mismos nombres de campo que los baselines para comparar en MLflow.
+    """
+    m = metricas_alerta(y_true, y_pred_bin, y_score)
     if y_ini is not None:
-        y_ini = np.asarray(y_ini, dtype=int)
-        onsets = int(y_ini.sum())
-        detected = int(((y_ini == 1) & (y_pred_bin == 1)).sum())
-        m["outbreak_onsets"] = onsets
-        m["outbreak_onsets_detected"] = detected
-        m["onset_detect_rate"] = round(detected / onsets, 4) if onsets > 0 else 0.0
-
+        m.update(inicios_vs_continuaciones(y_true, y_pred_bin, y_ini))
     return m
 
 
 def log_full_metrics(m, prefix="test"):
     """Registra metricas en el run activo de MLflow con prefijo dado."""
-    mlflow.log_metrics({f"{prefix}_{k}": float(v) for k, v in m.items()})
+    loggable = {k: v for k, v in m.items() if isinstance(v, (int, float)) and v == v}
+    mlflow.log_metrics({f"{prefix}_{k}": float(v) for k, v in loggable.items()})
 
 
 def print_metrics(m, label="Test"):
-    print(f"  {label}: recall={m['recall']:.3f} prec={m['precision']:.3f} "
-          f"F1={m['f1']:.3f} FAR={m['false_alarm_rate']:.3f}", end="")
-    if "outbreak_onsets" in m:
-        print(f" | inicios {m['outbreak_onsets_detected']}/{m['outbreak_onsets']}"
-              f" ({m['onset_detect_rate']:.1%})")
+    print(f"  {label}: sensibilidad={m['sensibilidad']:.3f} "
+          f"prec={m['precision']:.3f} F1={m['f1']:.3f} "
+          f"FAR={m['tasa_falsas_alarmas']:.3f}", end="")
+    if "inicios" in m:
+        print(f" | inicios {m['inicios_detectados']}/{m['inicios']}")
     else:
         print()
 
