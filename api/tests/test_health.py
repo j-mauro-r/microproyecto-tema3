@@ -28,13 +28,13 @@ def test_each_request_has_an_independent_backend_uuid(client: TestClient) -> Non
     assert first != second
 
 
-def test_openapi_only_documents_health_for_v2(client: TestClient) -> None:
+def test_openapi_documents_hu001_and_hu002_routes(client: TestClient) -> None:
     response = client.get("/openapi.json")
     paths = response.json()["paths"]
 
     assert response.status_code == 200
     assert response.json()["info"]["version"] == "2.0.0"
-    assert set(paths) == {"/api/v2/health"}
+    assert set(paths) == {"/api/v2/health", "/api/v2/monthly-runs"}
 
 
 def test_cors_respects_explicit_allowlist(client: TestClient) -> None:
