@@ -1,0 +1,1 @@
+"""Versioned BIOMAC API contracts."""
