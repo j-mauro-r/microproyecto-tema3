@@ -51,7 +51,7 @@ class Settings:
     debug: bool
     cors_origins: tuple[str, ...]
     upload_max_bytes: int = 10 * 1024 * 1024
-    upload_allowed_extensions: tuple[str, ...] = ()
+    upload_allowed_extensions: tuple[str, ...] = (".csv",)
 
 
 @lru_cache
@@ -72,8 +72,7 @@ def get_settings() -> Settings:
             os.getenv("BIOMAC_UPLOAD_MAX_BYTES", str(10 * 1024 * 1024)),
             "BIOMAC_UPLOAD_MAX_BYTES",
         ),
-        # Deliberately empty until the monthly-file format is contractually defined.
         upload_allowed_extensions=_upload_extensions(
-            os.getenv("BIOMAC_UPLOAD_ALLOWED_EXTENSIONS", "")
+            os.getenv("BIOMAC_UPLOAD_ALLOWED_EXTENSIONS", ".csv")
         ),
     )
