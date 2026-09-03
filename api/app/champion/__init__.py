@@ -9,6 +9,11 @@ from api.app.champion.adapter import (
     build_champion_adapter,
 )
 from api.app.champion.models import ChampionMetadata, ChampionOutput, ChampionPrediction
+from api.app.champion.materialized import (
+    MaterializedChampionPrediction,
+    MaterializedChampionResult,
+    MaterializedOutputAdapter,
+)
 from api.app.champion.port import ChampionAdapter
 
 __all__ = [
@@ -20,6 +25,9 @@ __all__ = [
     "ChampionRuntime",
     "LazyChampionAdapter",
     "MUNICIPALITY_NAMES",
+    "MaterializedChampionPrediction",
+    "MaterializedChampionResult",
+    "MaterializedOutputAdapter",
     "NativePrediction",
     "build_champion_adapter",
 ]

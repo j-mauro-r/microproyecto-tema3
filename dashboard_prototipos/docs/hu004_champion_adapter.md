@@ -5,7 +5,7 @@
 - **ID canónico:** HU004
 - **Alias en backlog:** HU-INT-004
 - **Nombre:** Adapter del Champion
-- **Estado:** `[PENDIENTE]`
+- **Estado:** `[EN IMPLEMENTACIÓN — ALCANCE DE DESARROLLO COMPLETADO]`
 - **Prioridad:** ALTA
 - **Tipo:** Backend / Integración ML / Serving
 - **Metodología:** DWP (Deep Work Plan)
@@ -26,11 +26,35 @@
 9. `api/app/domain/champion_input.py`;
 10. `api/app/domain/champion_feature_contract.py`;
 11. contrato/artefacto Champion aprobado entregado por el equipo de modelado;
-12. PR #12 únicamente como fuente complementaria temporal mientras el Champion definitivo no esté materializado en `main`.
+12. `dashboard_prototipos/JSON-dashboard.md` y `scripts/generate_champion_output.py`
+    de PR #12 como contrato suministrado por modelado para la ruta materializada MVP.
 
 ---
 
 ## 2. Contexto y decisión de alcance
+
+### Decisión MVP vigente — salida materializada de PR #12
+
+Para el MVP, la ruta primaria de integración es:
+
+```text
+PR12 ChampionResult
+→ MaterializedOutputAdapter
+→ ChampionOutput
+```
+
+La ruta ejecutable permanece disponible como alternativa futura compatible:
+
+```text
+ChampionInput
+→ LazyChampionAdapter / ExecutableChampionAdapter
+→ ChampionOutput
+```
+
+Son estrategias intercambiables seleccionadas en composición/configuración, no fallbacks.
+Un fallo del provider configurado debe finalizar la operación; nunca se intenta la otra
+estrategia de forma silenciosa. HU005 y las HUs posteriores dependen exclusivamente de
+`ChampionOutput`, no del JSON PR #12 ni de detalles del modelo.
 
 HU003 termina en un objeto estable y framework-agnostic:
 
@@ -47,7 +71,7 @@ ChampionInput
 
 HU004 debe tomar ese contrato y encapsular completamente la interacción con el Champion.
 
-El flujo objetivo es:
+El flujo ejecutable alternativo es:
 
 ```text
 ChampionInput
@@ -82,7 +106,8 @@ El Champion puede entregarse preferentemente como paquete Python versionado `.wh
 
 Al finalizar HU004 deberá existir una capa reusable y testeable que:
 
-1. reciba exclusivamente `ChampionInput` como entrada pública de inferencia;
+1. reciba `ChampionResult` PR #12 en la ruta materializada MVP o `ChampionInput` en la
+   ruta ejecutable alternativa, sin mezclar ambas estrategias;
 2. exponga una interfaz estable `ChampionAdapter`;
 3. exponga metadata mínima del Champion mediante `ChampionMetadata`;
 4. produzca un `ChampionOutput` independiente del framework concreto;
@@ -146,7 +171,6 @@ class ChampionMetadata:
     output_type: str
     feature_contract_version: str
     feature_contract_sha256: str
-    decision_threshold: float | None = None
     mlflow_run_id: str | None = None
     artifact_sha256: str | None = None
 ```
@@ -154,7 +178,7 @@ class ChampionMetadata:
 Reglas:
 
 - `supported_horizons` solo incluye horizontes reales;
-- `decision_threshold=None` si el Champion no entrega una regla contractual;
+- los thresholds no pertenecen a metadata global: se preservan por predicción/horizonte;
 - `mlflow_run_id=None` si no existe o no forma parte del artefacto entregado;
 - `artifact_sha256=None` solo cuando no sea técnicamente aplicable;
 - no usar valores ficticios para completar metadata.
@@ -167,6 +191,7 @@ Tipo conceptual por municipio/horizonte:
 @dataclass(frozen=True, slots=True)
 class ChampionPrediction:
     divipola: str
+    municipality: str
     horizon: str
     target_month: str
     output_type: str
@@ -187,12 +212,24 @@ class ChampionOutput:
     reference_month: str
     predictions: tuple[ChampionPrediction, ...]
     metadata: ChampionMetadata
-    source_file_sha256: str
+    source_file_sha256: str | None = None
 ```
 
 El output no es todavía el JSON final del dashboard ni el `PredictionSnapshot` de `API-sign.md`.
 
 La normalización completa para persistencia/API corresponde a `ResultMapper` y HU005+.
+
+### 6.4 Contrato materializado PR #12
+
+`MaterializedChampionResult` y `MaterializedChampionPrediction` representan de forma
+inmutable y estricta el contrato de `dashboard_prototipos/JSON-dashboard.md` suministrado
+por modelado. `MaterializedOutputAdapter.from_result(...)` acepta ese objeto interno o
+un `Mapping` equivalente y produce `ChampionOutput` sin ejecutar modelos.
+
+Para el contrato probabilístico MVP exige exactamente las claves `68001/T+1`,
+`68001/T+2`, `76001/T+1`, `76001/T+2`, valida meses, rangos finitos, nombres de
+municipio y la regla `probability >= threshold → EXCESO`. Cada
+`prediction.threshold` se mapea a su propio `ChampionPrediction.decision_threshold`.
 
 ---
 

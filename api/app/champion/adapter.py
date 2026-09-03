@@ -31,6 +31,7 @@ class NativePrediction:
     expected_cases: float | None = None
     risk_score: float | None = None
     label: str | None = None
+    decision_threshold: float | None = None
 
 
 class ChampionRuntime(Protocol):
@@ -156,13 +157,14 @@ class LazyChampionAdapter:
             for horizon in metadata.supported_horizons:
                 item = by_key[(divipola, horizon)]
                 _validate_output_fields(item, metadata.output_type)
-                threshold = metadata.decision_threshold
+                threshold = item.decision_threshold
                 label = item.label
                 if label is None and threshold is not None and item.probability is not None:
                     label = "EXCESO" if item.probability >= threshold else "NO_EXCESO"
                 predictions.append(
                     ChampionPrediction(
                         divipola=divipola,
+                        municipality=MUNICIPALITY_NAMES[divipola],
                         horizon=horizon,
                         target_month=_target_month(reference_month, horizon),
                         output_type=metadata.output_type,

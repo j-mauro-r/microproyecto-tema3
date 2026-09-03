@@ -20,7 +20,7 @@ from api.app.schemas.errors import ErrorCode
 from api.app.schemas.runs import RunStatus
 
 
-def metadata(*, horizons=("T+1", "T+2"), threshold=0.61):
+def metadata(*, horizons=("T+1", "T+2")):
     return ChampionMetadata(
         name="test-champion",
         version="test-only",
@@ -28,7 +28,6 @@ def metadata(*, horizons=("T+1", "T+2"), threshold=0.61):
         output_type="probability",
         feature_contract_version=CHAMPION_FEATURE_CONTRACT_VERSION,
         feature_contract_sha256=CHAMPION_FEATURE_CONTRACT_SHA256,
-        decision_threshold=threshold,
     )
 
 
@@ -56,7 +55,12 @@ class FakeRuntime:
         probabilities = {"68001": 0.72, "76001": 0.34}
         # Reverse order deliberately: mapping must use explicit keys, never row order.
         return tuple(
-            NativePrediction(divipola=municipality, horizon=horizon, probability=probabilities[municipality])
+            NativePrediction(
+                divipola=municipality,
+                horizon=horizon,
+                probability=probabilities[municipality],
+                decision_threshold=0.61,
+            )
             for municipality in reversed(inference_input.municipalities)
             for horizon in reversed(self.metadata.supported_horizons)
         )
@@ -117,8 +121,8 @@ def test_t1_only_champion_never_creates_t2(champion_input):
     ]
 
 
-def test_contractual_threshold_is_preserved_and_drives_label(champion_input):
-    output = LazyChampionAdapter(CountingLoader(FakeRuntime(metadata(threshold=0.61)))).predict(
+def test_prediction_threshold_is_preserved_and_drives_label(champion_input):
+    output = LazyChampionAdapter(CountingLoader(FakeRuntime(metadata()))).predict(
         champion_input
     )
     assert [item.decision_threshold for item in output.predictions] == [0.61] * 4
@@ -128,15 +132,21 @@ def test_contractual_threshold_is_preserved_and_drives_label(champion_input):
 
 
 def test_missing_threshold_does_not_fabricate_threshold_or_label(champion_input):
-    output = LazyChampionAdapter(CountingLoader(FakeRuntime(metadata(threshold=None)))).predict(
-        champion_input
-    )
+    class ThresholdlessRuntime(FakeRuntime):
+        def predict(self, inference_input):
+            return tuple(
+                NativePrediction(divipola=municipality, horizon=horizon, probability=0.72)
+                for municipality in inference_input.municipalities
+                for horizon in self.metadata.supported_horizons
+            )
+
+    output = LazyChampionAdapter(CountingLoader(ThresholdlessRuntime(metadata()))).predict(champion_input)
     assert all(item.decision_threshold is None and item.label is None for item in output.predictions)
 
 
 def test_non_probability_output_does_not_fabricate_probability(champion_input):
     class ExpectedCasesRuntime:
-        metadata = replace(metadata(threshold=None), output_type="expected_cases")
+        metadata = replace(metadata(), output_type="expected_cases")
 
         def predict(self, inference_input):
             return tuple(
