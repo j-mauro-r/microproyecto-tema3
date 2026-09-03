@@ -21,3 +21,12 @@ __pycache__/
 *.key
 
 mlruns/
+
+# BIOMAC local runtime databases
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+*.sqlite-wal
+*.sqlite-shm
