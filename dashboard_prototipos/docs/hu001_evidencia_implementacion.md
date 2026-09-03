@@ -1,8 +1,11 @@
 # HU001 — Evidencia de implementación FastAPI base y contratos
 
-**Rama:** `feature/hu001-fastapi-base-contracts`  
-**Base:** `main` actualizado en `4aefcddc` (PR #20 integrado)  
-**Fecha:** 2026-09-02  
+**Rama:** `feature/hu001-fastapi-base-contracts`
+
+**Base:** `main` actualizado en `4aefcddc` (PR #20 integrado)
+
+**Fecha:** 2026-09-02
+
 **Estado:** PASS, pendiente de revisión/merge del PR
 
 ## Alcance entregado
