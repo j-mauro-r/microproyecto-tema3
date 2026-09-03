@@ -630,3 +630,80 @@ Dashboard Lovable
 y una posterior apertura o `Refresh` recupera la misma predicción persistida sin volver a ejecutar el modelo.
 
 Además, debe ser posible reproducir el servidor desde una versión conocida de Git/DVC, instalar una versión explícita del Champion y verificar `/api/v2/health` antes de habilitar el dashboard.
+
+---
+
+## 28. Decisión arquitectónica vigente — providers intercambiables de HU004
+
+Esta sección tiene precedencia sobre referencias anteriores que presenten la ejecución local directa del modelo como única estrategia del MVP.
+
+### 28.1 Contrato interno estable
+
+La arquitectura lógica queda fijada así:
+
+```text
+                ┌──────────────────────────────┐
+MVP / Modo B →  │ MaterializedChampionProvider │
+                └──────────────┬───────────────┘
+                               │
+                               v
+                       ChampionService
+                               │
+                               v
+                        ChampionOutput
+                               │
+                               v
+                         HU005 y siguientes
+                               ^
+                               │
+                ┌──────────────┴───────────────┐
+Futuro / A  →   │ ExecutableChampionProvider  │
+                └──────────────────────────────┘
+```
+
+`ChampionService.produce(ChampionOperationalContext) → ChampionOutput` es la frontera estable entre
+integración ML y aplicación.
+
+### 28.2 Estrategia del MVP
+
+Para el MVP se adopta **Modo B**:
+
+```text
+PR12 ChampionResult
+→ MaterializedOutputAdapter
+→ ChampionOutput
+```
+
+PR #12 ya produce los campos requeridos por el dashboard; por ello no se requiere duplicar la ejecución del modelo para completar el MVP.
+
+### 28.3 Evolución futura
+
+Modo A puede incorporarse posteriormente:
+
+```text
+ChampionInput
+→ ExecutableChampionAdapter
+→ ChampionOutput
+```
+
+Su incorporación debe limitarse a HU004 y al composition root/configuración. No debe requerir cambios estructurales en orquestación, repositorios, contratos HTTP ni frontend.
+
+### 28.4 Estrategias, no fallback
+
+Los dos adapters son **alternativas configurables**. No existe fallback automático entre ellos. Si el provider activo falla, la ejecución falla de forma observable; no se cambia de estrategia silenciosamente.
+
+### 28.5 Regla para componentes posteriores
+
+`MonthlyPredictionOrchestrator` debe depender solo de `ChampionService`,
+`ChampionOperationalContext` y `ChampionOutput`; los componentes posteriores consumen
+`ChampionOutput`. Queda
+prohibido acoplar HU005+ a:
+
+- estructura concreta `ChampionResult` de PR #12;
+- archivos JSON físicos;
+- scripts de modelado;
+- XGBoost/pickle;
+- paquetes `.whl`;
+- detalles del provider activo.
+
+Esta regla es el mecanismo explícito para permitir una migración posterior B → A sin refactoring transversal.

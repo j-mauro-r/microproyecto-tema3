@@ -417,3 +417,40 @@ Ante discrepancias:
 4. `diccionario-de-datos.md` define semántica de campos.
 5. el Champion define qué salidas ML existen realmente.
 6. la UI nunca simula una salida faltante.
+
+---
+
+## 17. Agnosticismo del contrato HTTP frente al provider HU004
+
+La API `/api/v2` no distingue ni expone cómo HU004 obtuvo `ChampionOutput`.
+
+Para el MVP, el provider activo será:
+
+```text
+ChampionResult PR12
+→ MaterializedOutputAdapter
+→ ChampionOutput
+```
+
+En una evolución futura podrá ser:
+
+```text
+ChampionInput
+→ ExecutableChampionAdapter
+→ ChampionOutput
+```
+
+Los endpoints, schemas HTTP, `PredictionSnapshot`, persistencia y frontend deben comportarse igual en ambos casos.
+
+### Regla contractual
+
+`POST /monthly-runs` significa **obtener una nueva salida Champion válida para el run**, no necesariamente deserializar/ejecutar un modelo dentro del proceso FastAPI. El detalle pertenece a HU004.
+
+La capa de orquestación de la API solo puede invocar
+`ChampionService.produce(ChampionOperationalContext)` y recibir `ChampionOutput`. No puede contener
+branching del tipo `if materialized` / `if executable`, ni importar adapters concretos,
+JSON PR #12, XGBoost, pickle o paquetes de modelo.
+
+### Sin fallback silencioso
+
+El provider HU004 activo se define por configuración/composición. Si falla, el run falla con el error contractual correspondiente. La API no cambia automáticamente de provider porque hacerlo comprometería trazabilidad y reproducibilidad.
