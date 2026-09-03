@@ -226,3 +226,34 @@ HU004 desarrollo = REABIERTA PARA AJUSTE PR12
 ```
 
 El cierre anterior queda supersedido hasta implementar y probar `MaterializedOutputAdapter` y threshold por predicción/horizonte.
+
+---
+
+## Decisión arquitectónica registrada para el MVP
+
+Se fija formalmente la siguiente decisión:
+
+```text
+MVP = Modo B
+PR12 ChampionResult
+→ MaterializedOutputAdapter
+→ ChampionOutput
+```
+
+El `ExecutableChampionAdapter` queda como **alternativa futura compatible**, no como requisito de cierre actual.
+
+### No es fallback
+
+Los modos A y B no se encadenan. No debe existir lógica que intente un provider y, si falla, cambie silenciosamente al otro. El provider activo se selecciona por configuración/composición y cualquier fallo debe ser observable.
+
+### Protección de HU005+
+
+La decisión clave para evitar refactor futuro es:
+
+```text
+HU005+ depende solo de ChampionOutput
+```
+
+Por tanto, HU005, persistencia, API, dashboard, historial y explicabilidad no deben importar ni conocer `ChampionResult`, JSON PR #12, `generate_champion_output.py`, XGBoost, pickle, `.whl` o `ChampionInput` como detalle de serving.
+
+Cuando se implemente Modo A en el futuro, la sustitución debe ocurrir únicamente dentro de HU004/composición. Si una HU posterior requiere cambios estructurales por ese reemplazo, se considerará una violación de esta decisión arquitectónica.
