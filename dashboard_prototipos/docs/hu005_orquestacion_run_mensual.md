@@ -1,6 +1,6 @@
 # HU005 — Orquestación del run mensual
 
-**Estado:** `[DEFINIDA — PENDIENTE IMPLEMENTACIÓN]`  
+**Estado:** `[COMPLETADA — DESARROLLO]`
 **Versión:** `1.0.0`  
 **Ámbito:** ejecución local para Entregable 2  
 **Dependencias:** HU002, HU003, HU004  
@@ -294,6 +294,10 @@ Si los schemas actuales no contienen `MAPPING` o `READY_TO_PERSIST`, se debe dec
 
 La elección debe evitar romper HU001–HU004 y `API-sign.md`.
 
+Decisión implementada: `RunStatus` se extendió con `MAPPING` y `READY_TO_PERSIST`.
+Es una extensión compatible; `PERSISTING` y `COMPLETED` conservan su semántica y quedan
+reservados para HU006.
+
 `COMPLETED` queda reservado para un run cuyo snapshot ya haya sido persistido durablemente por HU006.
 
 ---
@@ -367,6 +371,11 @@ Debe preservar, cuando exista:
 Los campos de canal endémico, calidad, historia o explicación solo se incluyen si existen de forma verificable en la entrada disponible.
 
 No crear placeholders que aparenten datos reales.
+
+Decisión implementada: HU005 produce `PredictionSnapshotCandidate`, un contrato de
+aplicación inmutable que contiene exclusivamente predicciones y metadata demostrables.
+No fuerza los campos epidemiológicos obligatorios del `PredictionSnapshot` HTTP final;
+HU006/HU007 podrán completar ese contrato solo con fuentes reales.
 
 ---
 
