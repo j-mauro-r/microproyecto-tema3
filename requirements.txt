@@ -7,3 +7,9 @@ python-calamine==0.8.2
 matplotlib==3.11.1
 scikit-learn==1.8.0
 mlflow-skinny==2.22.0
+
+# HU001: FastAPI base and focused contract tests
+fastapi>=0.115,<1
+uvicorn>=0.30,<1
+pytest>=8,<10
+httpx>=0.27,<1
