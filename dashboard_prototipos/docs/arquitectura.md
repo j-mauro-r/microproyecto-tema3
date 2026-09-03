@@ -279,6 +279,15 @@ FAILED
 
 El dashboard puede mostrar el último estado conocido. En el MVP síncrono son especialmente útiles para trazabilidad y pruebas.
 
+### Persistencia local HU006
+
+Para el Entregable 2, `MonthlyRunPersistenceService` consume el resultado
+`READY_TO_PERSIST` de HU005 y coordina una unidad de trabajo SQLite. El SQL queda
+encapsulado en `api/app/persistence/sqlite.py`; API y orquestación dependen de los
+puertos `RunRepository` y `PredictionRepository`. `COMPLETED` se escribe dentro de
+la misma transacción que el run y el snapshot, inmediatamente antes del commit.
+La ruta se obtiene de `BIOMAC_DB_PATH` y la implementación no requiere red ni nube.
+
 ## 10. Idempotencia y consistencia
 
 Una carga debe identificarse mediante:

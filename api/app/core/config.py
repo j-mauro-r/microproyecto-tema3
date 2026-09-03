@@ -52,6 +52,7 @@ class Settings:
     cors_origins: tuple[str, ...]
     upload_max_bytes: int = 10 * 1024 * 1024
     upload_allowed_extensions: tuple[str, ...] = (".csv",)
+    db_path: str = "runtime/biomac.db"
 
 
 @lru_cache
@@ -75,4 +76,5 @@ def get_settings() -> Settings:
         upload_allowed_extensions=_upload_extensions(
             os.getenv("BIOMAC_UPLOAD_ALLOWED_EXTENSIONS", ".csv")
         ),
+        db_path=os.getenv("BIOMAC_DB_PATH", "runtime/biomac.db"),
     )

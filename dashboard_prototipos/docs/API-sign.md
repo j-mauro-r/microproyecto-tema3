@@ -142,6 +142,13 @@ cualquier etapa → FAILED
 
 `prediction_snapshot.forecasts` usa el mismo schema descrito en la sección 10.
 
+**Contrato transitorio HU006.** Mientras HU007/HU009 no suministren los
+enriquecimientos de `forecasts`, el `201` de HU006 devuelve únicamente evidencia
+real: metadata mínima del run/Champion y `prediction_snapshot.predictions` con las
+filas producidas por `PredictionSnapshotCandidate`. No se fabrican data quality,
+historia, explicación, canal endémico ni thresholds ausentes. HU007 deberá
+normalizar la lectura al contrato final de la sección 10.
+
 ### 6.4 Idempotencia
 
 Clave lógica:

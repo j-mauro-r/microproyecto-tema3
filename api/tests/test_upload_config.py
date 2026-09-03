@@ -18,6 +18,18 @@ def test_default_upload_format_is_csv(monkeypatch: pytest.MonkeyPatch) -> None:
         get_settings.cache_clear()
 
 
+def test_database_path_is_configurable(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    configured = tmp_path / "configured.sqlite"
+    monkeypatch.setenv("BIOMAC_DB_PATH", str(configured))
+    get_settings.cache_clear()
+    try:
+        assert get_settings().db_path == str(configured)
+    finally:
+        get_settings.cache_clear()
+
+
 @pytest.mark.parametrize("value", ["0", "-1", "many"])
 def test_upload_limit_rejects_invalid_values(value: str) -> None:
     with pytest.raises(ValueError):

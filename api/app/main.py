@@ -7,6 +7,9 @@ from api.app.api.v2.health import router as health_router
 from api.app.api.v2.monthly_runs import router as monthly_runs_router
 from api.app.core.config import API_PREFIX, Settings, get_settings
 from api.app.domain.monthly_uploads import MonthlyUploadContract, MonthlyUploadValidator
+from api.app.orchestration.monthly import MonthlyPredictionOrchestrator
+from api.app.persistence.service import MonthlyRunPersistenceService
+from api.app.persistence.sqlite import SQLiteUnitOfWork
 from api.app.core.errors import register_error_handlers
 from api.app.middleware.request_id import RequestIdMiddleware
 
@@ -14,6 +17,8 @@ from api.app.middleware.request_id import RequestIdMiddleware
 def create_app(
     settings: Settings | None = None,
     monthly_upload_validator: MonthlyUploadValidator | None = None,
+    monthly_orchestrator: MonthlyPredictionOrchestrator | None = None,
+    persistence_service: MonthlyRunPersistenceService | None = None,
 ) -> FastAPI:
     current = settings or get_settings()
     application = FastAPI(
@@ -36,6 +41,12 @@ def create_app(
         contract=MonthlyUploadContract(
             allowed_extensions=current.upload_allowed_extensions,
         ),
+    )
+    application.state.monthly_orchestrator = monthly_orchestrator
+    application.state.monthly_run_persistence = persistence_service or (
+        MonthlyRunPersistenceService(lambda: SQLiteUnitOfWork(current.db_path))
+        if monthly_orchestrator is not None
+        else None
     )
     application.include_router(health_router, prefix=API_PREFIX)
     application.include_router(monthly_runs_router, prefix=API_PREFIX)

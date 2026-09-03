@@ -4,6 +4,10 @@ from fastapi.testclient import TestClient
 
 from api.app.core.config import Settings
 from api.app.main import create_app
+from api.app.domain.errors import ContractError
+from api.app.schemas.errors import ErrorCode
+from api.app.schemas.runs import RunStatus
+from api.tests.test_persistence import _ready, _service
 from api.tests.test_monthly_upload_validator import csv_bytes
 
 
@@ -55,3 +59,62 @@ def test_cors_preflight_allows_configured_origin_only():
     assert allowed.status_code == 200 and "POST" in allowed.headers["access-control-allow-methods"]
     assert allowed.headers["access-control-allow-origin"] == "https://dashboard.example.test"
     assert "access-control-allow-origin" not in denied.headers
+
+
+class _Orchestrator:
+    def run(self, command):
+        return _ready()
+
+
+class _BrokenPersistence:
+    def persist(self, result):
+        raise ContractError(
+            ErrorCode.PERSISTENCE_FAILED, "No fue posible persistir el run mensual.",
+            status_code=500, stage=RunStatus.PERSISTING,
+            details={"reason": "sqlite_transaction_failed"},
+        )
+
+
+def test_valid_post_returns_201_only_with_durable_completed_result(tmp_path):
+    app = create_app(
+        Settings(service_name="biomac-api", api_version="2.0.0", environment="test",
+                 debug=False, cors_origins=()),
+        monthly_orchestrator=_Orchestrator(),
+        persistence_service=_service(tmp_path / "biomac.db"),
+    )
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post("/api/v2/monthly-runs", data={"reference_month": "2026-01"},
+                               files={"file": ("monthly.csv", csv_bytes(), "text/csv")})
+    body = response.json()
+    assert response.status_code == 201
+    assert body["run"]["status"] == "COMPLETED"
+    assert body["run"]["completed_at"] is not None
+    assert len(body["prediction_snapshot"]["predictions"]) == 4
+
+
+def test_composition_uses_configured_database_path(tmp_path):
+    path = tmp_path / "configured.sqlite"
+    app = create_app(
+        Settings(service_name="biomac-api", api_version="2.0.0", environment="test",
+                 debug=False, cors_origins=(), db_path=str(path)),
+        monthly_orchestrator=_Orchestrator(),
+    )
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post("/api/v2/monthly-runs", data={"reference_month": "2026-01"},
+                               files={"file": ("monthly.csv", csv_bytes(), "text/csv")})
+    assert response.status_code == 201 and path.exists()
+
+
+def test_database_failure_returns_sanitized_persistence_error():
+    app = create_app(
+        Settings(service_name="biomac-api", api_version="2.0.0", environment="test",
+                 debug=False, cors_origins=()),
+        monthly_orchestrator=_Orchestrator(), persistence_service=_BrokenPersistence(),
+    )
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post("/api/v2/monthly-runs", data={"reference_month": "2026-01"},
+                               files={"file": ("monthly.csv", csv_bytes(), "text/csv")})
+    error = response.json()["error"]
+    assert response.status_code == 500
+    assert error["code"] == "PERSISTENCE_FAILED" and error["stage"] == "PERSISTING"
+    assert "sqlite" not in error["message"].lower()

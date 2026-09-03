@@ -68,6 +68,7 @@ class MonthlyRunResult:
     error_code: ErrorCode | None
     error_stage: RunStatus | None
     error_message: str | None
+    completed_at: datetime | None = None
 
 
 class ResultMapper:

@@ -376,13 +376,19 @@ Clave lógica:
 
 # HU-INT-006 — Persistencia y trazabilidad
 
+**Estado:** `[COMPLETADA — DESARROLLO]`
+
 **Como** usuario y auditor  
 **quiero** conservar cada ejecución  
 **para** consultar la última predicción y su historial sin volver a ejecutar el modelo.
 
-## Deployment MVP
+## Persistencia local del Entregable 2
 
-La persistencia puede implementarse inicialmente con almacenamiento local estructurado en EC2, siempre detrás de `PredictionRepository`/`RunRepository` y fuera de rutas versionadas por Git.
+HU006 usa SQLite local, con ruta configurable mediante `BIOMAC_DB_PATH`, detrás de
+`PredictionRepository`/`RunRepository` y fuera de rutas versionadas por Git. La
+promoción `READY_TO_PERSIST → PERSISTING → COMPLETED` ocurre en una transacción que
+incluye el run y todas sus predicciones; un error produce rollback y
+`PERSISTENCE_FAILED/PERSISTING`.
 
 La interfaz debe permitir migrar posteriormente a una base de datos sin cambiar el contrato de FastAPI ni el dashboard.
 
