@@ -19,8 +19,9 @@ def test_valid_upload_does_not_fabricate_201_completed():
             files={"file": ("monthly.csv", csv_bytes(), "text/csv")})
     detail = response.json()["error"]
     assert response.status_code == 503
-    assert detail["code"] == "CHAMPION_NOT_READY"
-    assert detail["stage"] == "VALIDATING"
+    assert detail["code"] == "PERSISTENCE_FAILED"
+    assert detail["stage"] == "PERSISTING"
+    assert detail["details"]["reason"] == "durable_persistence_not_available"
     assert len(detail["details"]["source_file"]["sha256"]) == 64
     assert "prediction" not in response.text.lower()
 

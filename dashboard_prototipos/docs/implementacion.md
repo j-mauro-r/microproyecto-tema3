@@ -338,8 +338,8 @@ RECEIVED
 → VALIDATING
 → PREPARING
 → INFERENCING
-→ PERSISTING
-→ COMPLETED
+→ MAPPING
+→ READY_TO_PERSIST
 ```
 
 Ante error:
@@ -355,8 +355,8 @@ cualquier estado → FAILED
 - ejecutar HU002 → HU003 → HU004 en orden;
 - evitar pasos posteriores si falla uno;
 - mapear salida del Champion al contrato BIOMAC;
-- persistir solo un snapshot consistente;
-- devolver la ejecución terminada en el MVP síncrono.
+- producir un snapshot candidato consistente en memoria;
+- entregar `READY_TO_PERSIST` a HU006.
 
 ## Idempotencia
 
@@ -366,10 +366,10 @@ Clave lógica:
 
 ## Criterios de aceptación
 
-- CA01: una ejecución exitosa termina en `COMPLETED`.
+- CA01: una ejecución lógica exitosa termina en `READY_TO_PERSIST`.
 - CA02: fallo termina en `FAILED` con etapa/código.
-- CA03: reintento idéntico no genera predicciones contradictorias.
-- CA04: una ejecución fallida no reemplaza la última exitosa.
+- CA03: reintento idéntico genera la misma clave lógica de idempotencia.
+- CA04: no existe persistencia durable ni estado global en HU005.
 - CA05: cada resultado permite reconstruir qué archivo y Champion se usaron.
 
 ---
