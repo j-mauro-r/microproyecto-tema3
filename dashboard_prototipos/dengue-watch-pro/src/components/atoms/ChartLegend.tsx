@@ -20,12 +20,7 @@ export function ChartLegend({ items }: { items: LegendItem[] }) {
 function Marker({ item }: { item: LegendItem }) {
   const shape = item.shape ?? "line";
   if (shape === "dot") {
-    return (
-      <span
-        className="size-2.5 rounded-full"
-        style={{ backgroundColor: item.color }}
-      />
-    );
+    return <span className="size-2.5 rounded-full" style={{ backgroundColor: item.color }} />;
   }
   if (shape === "area") {
     return (

@@ -463,6 +463,8 @@ depende de la disponibilidad del Champion.
 
 # HU-INT-008 — Integración del dashboard Lovable
 
+**Estado:** `[COMPLETADA — DESARROLLO]`
+
 **Como** analista/usuario  
 **quiero** actualizar datos y consultar resultados desde la UI  
 **para** operar BIOMAC sin depender de scripts manuales.
@@ -492,6 +494,12 @@ FastAPI debe incluir el dominio real de Lovable en la allowlist CORS.
 - tras éxito, ejecutar `GET latest`;
 - botón `Refresh` solo ejecuta `GET latest`;
 - conservar pantalla principal de decisión.
+
+La composición productiva usa `HttpDengueRepository` y una única variable pública
+`VITE_BIOMAC_API_BASE_URL`. React Query controla `latest` y la mutation de upload;
+Refresh solo refetchea `latest`, mientras que un POST exitoso invalida esa misma
+query. Los paneles cuya información no existe en HU007 muestran indisponibilidad
+explícita y nunca recuperan datos mock.
 
 ## Criterios de aceptación
 

@@ -1,68 +1,40 @@
 export type CityId = "bucaramanga" | "cali";
-
+export type MunicipalityCode = "68001" | "76001";
 export type Horizon = "T+1" | "T+2";
 
-/** Salida binaria del modelo: 0 = NO EXCESO, 1 = EXCESO */
-export type ExcessClass = 0 | 1;
-
-export interface City {
-  id: CityId;
-  name: string;
-}
-
 export interface Prediction {
+  divipola: MunicipalityCode;
+  municipality: string;
   horizon: Horizon;
-  /** Mes objetivo del pronóstico, formato YYYY-MM */
   targetMonth: string;
-  label: ExcessClass;
-  probability: number; // 0..1
-  confidenceInterval?: [number, number];
+  outputType: string;
+  probability: number | null;
+  expectedCases: number | null;
+  riskScore: number | null;
+  label: string | null;
+  decisionThreshold: number | null;
 }
 
-export interface EndemicChannelStatus {
-  /** Porcentaje de los casos observados respecto al P75 del canal endémico */
-  ratioToP75: number; // 1 = igual al P75
+export interface ChampionMetadata {
+  name: string;
+  version: string;
+  outputType: string;
+  supportedHorizons: Horizon[];
+  featureContractVersion: string;
+  featureContractSha256: string;
+}
+
+export interface PredictionSnapshot {
+  runId: string;
+  generatedAt: string;
   referenceMonth: string;
-  observedCases: number;
-  p75: number;
-  description: string;
+  sourceFileSha256: string;
+  champion: ChampionMetadata;
+  predictions: Prediction[];
 }
 
-export interface SeriesPoint {
-  month: string; // YYYY-MM
-  observed: number | null;
-  p25: number;
-  p50: number;
-  p75: number;
-  isExcess: boolean;
-  isForecast: boolean;
-}
-
-export interface FeatureImportance {
-  feature: string;
-  importance: number; // SHAP promedio absoluto
-  group: "lag" | "climate" | "seasonality";
-}
-
-export interface Insight {
-  id: string;
-  level: "high" | "medium" | "low";
-  title: string;
-  detail: string;
-}
-
-export interface CityForecast {
-  city: City;
-  predictions: Record<Horizon, Prediction>;
-  endemicChannel: EndemicChannelStatus;
-  series: SeriesPoint[];
-  featureImportances: FeatureImportance[];
-  insights: Insight[];
-  recommendation: string;
-}
-
-export interface DashboardData {
-  updatedAt: string;
-  cities: City[];
-  forecasts: Record<CityId, CityForecast>;
+export interface MonthlyRunReceipt {
+  runId: string;
+  referenceMonth: string;
+  status: "COMPLETED";
 }

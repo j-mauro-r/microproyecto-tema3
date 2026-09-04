@@ -1,17 +1,13 @@
-import { dashboardMock } from "@/mocks/dengue.mock";
-import type { CityForecast, CityId, DashboardData } from "@/types/dengue";
 import type { DengueRepository } from "./dengue.repository";
+import type { MonthlyRunReceipt, PredictionSnapshot } from "@/types/dengue";
 
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
+/** Explicit test fake. Production composition never imports this class. */
 export class MockDengueRepository implements DengueRepository {
-  async getDashboard(): Promise<DashboardData> {
-    await delay(120);
-    return dashboardMock;
+  constructor(private readonly snapshot: PredictionSnapshot) {}
+  getLatest(): Promise<PredictionSnapshot> {
+    return Promise.resolve(this.snapshot);
   }
-
-  async getCityForecast(cityId: CityId): Promise<CityForecast> {
-    await delay(80);
-    return dashboardMock.forecasts[cityId];
+  createMonthlyRun(): Promise<MonthlyRunReceipt> {
+    return Promise.reject(new Error("Upload is unavailable in the explicit mock."));
   }
 }

@@ -413,6 +413,11 @@ Una respuesta de error no activa mocks.
 5. La UI se adapta a `output_type`.
 6. Campos `null` se ocultan o muestran como no disponibles; nunca se reemplazan por mocks.
 
+HU008 implementa esta compatibilidad con `HttpDengueRepository`. La configuración
+del navegador es `VITE_BIOMAC_API_BASE_URL` (incluye `/api/v2`, sin slash final).
+El cliente no establece `Content-Type` del multipart y usa el error estable
+`PREDICTION_NOT_FOUND` para distinguir el estado empty de una falla técnica.
+
 ## 15. Frontera con el Champion
 
 El backend requiere del equipo de modelado:
