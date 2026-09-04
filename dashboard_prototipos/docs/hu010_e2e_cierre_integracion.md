@@ -1,13 +1,13 @@
 # HU010 — Pruebas E2E y cierre de integración BIOMAC
 
-**Estado:** `[IMPLEMENTADA — BLOQUEADA POR GOLDEN PR12]`
+**Estado:** `[IMPLEMENTADA — BLOQUEADA POR FEATURE CONTRACT MISMATCH]`
 **Identificador:** `HU-INT-010`  
 **Prioridad:** ALTA  
-**Dependencias:** HU001–HU009 `[COMPLETADAS — DESARROLLO]`  
+**Dependencias:** HU001–HU009 `[COMPLETADAS — DESARROLLO]`, con ajuste contractual pendiente en HU004  
 **Ámbito vigente:** Entregable 2, validación local reproducible; sin AWS/deployment productivo en esta HU  
 **Frontend objetivo:** `dashboard_prototipos/dengue-watch-pro`  
 **Backend objetivo:** `/api/v2`  
-**Champion objetivo:** frontera HU004; para la prueba académica puede usarse la salida materializada real de PR #12  
+**Champion objetivo:** frontera HU004; para la prueba académica se usa la salida materializada real de PR #12  
 **Documentos fuente:** `arquitectura.md`, `API-sign.md`, `diccionario-de-datos.md`, `implementacion.md`, `prueba-funcional-api.md`, HU001–HU009 y evidencias asociadas.
 
 ---
@@ -31,7 +31,7 @@ CSV mensual ya preparado
 
 HU010 no agrega nueva lógica analítica. Su propósito es demostrar que las fronteras ya implementadas funcionan juntas de forma reproducible y cerrar las brechas de integración observadas antes de declarar terminado el MVP técnico del Entregable 2.
 
-La prueba funcional existente en `prueba-funcional-api.md` es una pieza de esta HU, pero HU010 amplía la evidencia hasta el dashboard y los contratos read-only.
+La prueba funcional existente en `prueba-funcional-api.md` es una pieza de esta HU, pero HU010 amplía la evidencia hasta el dashboard, los contratos read-only y la compatibilidad contractual entre input y Champion.
 
 ---
 
@@ -39,7 +39,7 @@ La prueba funcional existente en `prueba-funcional-api.md` es una pieza de esta 
 
 **Como** equipo BIOMAC  
 **quiero** ejecutar una batería reproducible de pruebas E2E y de contrato sobre el flujo mensual completo  
-**para** demostrar que una carga válida produce un snapshot persistido visible en el dashboard, que los errores no destruyen el último resultado válido y que las consultas no disparan inferencia.
+**para** demostrar que una carga válida produce un snapshot persistido visible en el dashboard, que los errores no destruyen el último resultado válido, que las consultas no disparan inferencia y que el resultado Champion fue producido bajo el mismo feature contract del input operacional.
 
 ---
 
@@ -48,7 +48,7 @@ La prueba funcional existente en `prueba-funcional-api.md` es una pieza de esta 
 HU010 debe demostrar con evidencia automatizada y manual que:
 
 1. FastAPI inicia con una composición local real y responde health;
-2. un CSV válido del mismo corte que una salida Champion real/materializada produce `201 COMPLETED`;
+2. un CSV válido del mismo corte que una salida Champion real/materializada produce `201 COMPLETED` **solo cuando ambos comparten exactamente el mismo feature contract**;
 3. Bucaramanga y Cali quedan persistidas con T+1/T+2 reales;
 4. probability/threshold/label del API coinciden con la salida Champion usada;
 5. `GET latest` devuelve el run recién completado sin ejecutar nueva inferencia;
@@ -62,7 +62,10 @@ HU010 debe demostrar con evidencia automatizada y manual que:
 13. nullability/enrichments HU009 se preservan sin mocks;
 14. la UI no calcula probability, threshold, label, canal, SHAP o calidad;
 15. no se ejecutan entrenamiento, MLflow, DVC, S3 o scripts de modelado durante GET/Refresh;
-16. toda evidencia puede reproducirse localmente desde instrucciones versionadas.
+16. toda evidencia puede reproducirse localmente desde instrucciones versionadas;
+17. `feature_contract_version` del input/API coincide exactamente con el del Champion;
+18. `feature_contract_sha256` del input/API coincide exactamente con el del Champion;
+19. cualquier mismatch contractual produce run `FAILED` antes de persistir un snapshot exitoso.
 
 ---
 
@@ -130,6 +133,17 @@ Después se comparan contra HTTP y SQLite.
 
 Un escenario no ejecutado no puede documentarse como PASS. Debe quedar `NOT_RUN`, `BLOCKED` o `OUT_OF_SCOPE` con motivo.
 
+### D07 — Igualdad contractual obligatoria
+
+Una salida Champion estructuralmente válida no es suficiente. Para el mismo run debe cumplirse:
+
+```text
+champion.feature_contract_version == input.feature_contract_version
+champion.feature_contract_sha256   == input.feature_contract_sha256
+```
+
+No se permite modificar metadata del JSON, del CSV o del contrato API para hacer pasar la prueba.
+
 ---
 
 ## 6. Precondiciones
@@ -139,12 +153,13 @@ Antes de iniciar el E2E:
 - `main` contiene HU001–HU009;
 - suites API/frontend están verdes;
 - PR12 real queda identificado por SHA;
-- existen los artefactos necesarios para producir la salida Champion del periodo elegido;
+- existe una salida Champion materializada real;
 - existe un CSV mensual válido HU002 del mismo corte;
+- CSV/API y Champion declaran el mismo feature contract;
 - SQLite de prueba usa una ruta dedicada;
 - archivos runtime están fuera de Git.
 
-Si PR12 no puede materializar `features_mensual.parquet`, el escenario con salida nueva del modelo queda bloqueado y debe documentarse. No generar datos sintéticos para reemplazarlo.
+Si el feature contract no coincide, el escenario happy-path queda `BLOCKED` y debe documentarse. No generar datos sintéticos ni editar hashes para reemplazar esa evidencia.
 
 ---
 
@@ -159,6 +174,7 @@ Flujo:
 ```text
 MaterializedChampionResultProvider
 → MaterializedChampionService
+→ feature contract gate
 → MonthlyPredictionOrchestrator
 → MonthlyRunPersistenceService
 → create_app(...)
@@ -170,7 +186,8 @@ Reglas:
 - no modificar `app = create_app()` global para introducir comportamiento de demo implícito;
 - no hardcodear artefactos PR12 en producción;
 - rutas runtime/config se proveen explícitamente;
-- no fallback materialized ↔ executable.
+- no fallback materialized ↔ executable;
+- mismatch contractual debe abortar antes de `READY_TO_PERSIST`/`COMPLETED`.
 
 ---
 
@@ -195,7 +212,7 @@ reference_month=REF_MONTH
 → COMPLETED
 ```
 
-Validar `run_id`, hash, Champion version y cuatro predicciones.
+Validar `run_id`, hash, Champion version, feature contract idéntico y cuatro predicciones.
 
 ### E03 — Correspondencia Champion → API
 
@@ -205,7 +222,9 @@ Para las cuatro combinaciones Bucaramanga/Cali × T+1/T+2 comprobar igualdad de:
 - `probability` cuando aplica;
 - `decision_threshold`;
 - `label`;
-- output type.
+- output type;
+- `feature_contract_version`;
+- `feature_contract_sha256`.
 
 No usar tolerancias arbitrarias; si hay floats serializados, definir tolerancia numérica mínima explícita.
 
@@ -351,6 +370,22 @@ Con backend devolviendo error controlado en upload:
 - retry disponible;
 - sin fallback mock.
 
+### E19 — Feature contract mismatch
+
+Construir/usar un caso donde el input/API y el Champion tengan distinta versión o SHA-256 contractual.
+
+Debe verificarse:
+
+```text
+POST monthly-runs
+→ FAILED controlado
+→ CHAMPION_INPUT_INVALID (reason=feature_contract_mismatch)
+→ cero snapshot nuevo COMPLETED
+→ latest previo preservado
+```
+
+Este escenario es obligatorio para cerrar HU010.
+
 ---
 
 ## 9. Corrección obligatoria detectada al cerrar HU009
@@ -405,7 +440,8 @@ Para hacer reproducible el E2E sin depender de PR12 en cada corrida automática,
 3. se documenta `reference_month`;
 4. se documenta hash del fixture;
 5. no contiene datos sensibles/pesados;
-6. no se modifica manualmente para hacer pasar tests.
+6. no se modifica manualmente para hacer pasar tests;
+7. su feature contract coincide con el input usado por el escenario que pretende probar.
 
 Ese fixture prueba la frontera materializada HU004, no sustituye la prueba manual de generación real desde PR12.
 
@@ -420,6 +456,7 @@ Agregar validaciones que detecten cambios incompatibles en:
 - `schema_version`;
 - prediction snapshot;
 - Champion metadata;
+- feature contract version/hash;
 - prediction outputs nullable;
 - decision rule;
 - explanation;
@@ -477,10 +514,12 @@ Debe registrar:
 - `reference_month`;
 - hash CSV;
 - hash ChampionResult golden/materializado;
+- feature contract version/hash del input/API;
+- feature contract version/hash del Champion;
 - configuración no sensible;
 - comandos ejecutados;
 - resultados de suites;
-- tabla E01–E18;
+- tabla E01–E19;
 - comparación Champion vs API;
 - evidencia SQLite;
 - evidencia idempotencia;
@@ -502,7 +541,7 @@ No incluir secretos ni archivos pesados.
 ### Flujo operativo
 
 **CA01.** Health responde 200 con composición local de prueba.  
-**CA02.** CSV válido produce run `COMPLETED`.  
+**CA02.** CSV válido y contractualmente compatible produce run `COMPLETED`.  
 **CA03.** API coincide con los cuatro resultados Champion del mismo corte.  
 **CA04.** Snapshot se persiste antes del 201.  
 **CA05.** Latest devuelve el run recién completado.  
@@ -517,37 +556,39 @@ No incluir secretos ni archivos pesados.
 **CA11.** Upload inválido no ejecuta Champion.  
 **CA12.** Fallo Champion no reemplaza latest previo.  
 **CA13.** Error de persistencia se devuelve saneado.  
-**CA14.** Snapshot previo continúa consultable tras run fallido.
+**CA14.** Snapshot previo continúa consultable tras run fallido.  
+**CA15.** Feature contract mismatch falla antes de persistencia exitosa y conserva latest previo.
 
 ### Read-only
 
-**CA15.** GET latest ejecuta cero Champion.  
-**CA16.** GET history ejecuta cero Champion.  
-**CA17.** GET run ejecuta cero Champion.  
-**CA18.** Refresh frontend ejecuta cero POST/inferencia.
+**CA16.** GET latest ejecuta cero Champion.  
+**CA17.** GET history ejecuta cero Champion.  
+**CA18.** GET run ejecuta cero Champion.  
+**CA19.** Refresh frontend ejecuta cero POST/inferencia.
 
 ### Frontend
 
-**CA19.** Apertura consume API real sin mocks.  
-**CA20.** Bucaramanga/Cali y T+1/T+2 se muestran según response.  
-**CA21.** POST exitoso actualiza latest.  
-**CA22.** POST exitoso actualiza/invalida history.  
-**CA23.** POST fallido conserva snapshot previo.  
-**CA24.** Nullability HU009 se representa sin valores inventados.  
-**CA25.** No existe cálculo ML/epidemiológico en React.
+**CA20.** Apertura consume API real sin mocks.  
+**CA21.** Bucaramanga/Cali y T+1/T+2 se muestran según response.  
+**CA22.** POST exitoso actualiza latest.  
+**CA23.** POST exitoso actualiza/invalida history.  
+**CA24.** POST fallido conserva snapshot previo.  
+**CA25.** Nullability HU009 se representa sin valores inventados.  
+**CA26.** No existe cálculo ML/epidemiológico en React.
 
 ### Reproducibilidad/calidad
 
-**CA26.** Existe golden fixture real o procedimiento reproducible PR12 documentado.  
-**CA27.** Suite API completa pasa.  
-**CA28.** Suite frontend completa pasa.  
-**CA29.** Typecheck/lint/build pasan.  
-**CA30.** `compileall`, `pip check` y `git diff --check` pasan.  
-**CA31.** Evidencia E01–E18 está versionada.  
-**CA32.** Ningún escenario no ejecutado se marca PASS.  
-**CA33.** Runtime/secretos/artefactos pesados no quedan versionados.  
-**CA34.** HU010 no introduce AWS/deployment productivo fuera del alcance vigente.  
-**CA35.** Documentación final queda alineada con el comportamiento realmente probado.
+**CA27.** Existe golden fixture real o procedimiento reproducible PR12 documentado.  
+**CA28.** Suite API completa pasa.  
+**CA29.** Suite frontend completa pasa.  
+**CA30.** Typecheck/lint/build pasan.  
+**CA31.** `compileall`, `pip check` y `git diff --check` pasan.  
+**CA32.** Evidencia E01–E19 está versionada.  
+**CA33.** Ningún escenario no ejecutado se marca PASS.  
+**CA34.** Runtime/secretos/artefactos pesados no quedan versionados.  
+**CA35.** HU010 no introduce AWS/deployment productivo fuera del alcance vigente.  
+**CA36.** Documentación final queda alineada con el comportamiento realmente probado.  
+**CA37.** Feature contract version/hash coincide en el happy path y se rechaza explícitamente en el escenario mismatch.
 
 ---
 
@@ -586,7 +627,10 @@ No incluir secretos ni archivos pesados.
 **AV31.** Actualizar `prueba-funcional-api.md` si la ejecución descubre comandos obsoletos.  
 **AV32.** Alinear `implementacion.md` con cierre local real y deployment futuro.  
 **AV33.** No marcar AWS/Lovable remoto PASS si no se ejecutó.  
-**AV34.** Registrar veredicto de cierre del MVP técnico local.
+**AV34.** Comparar feature contract version/hash input/API ↔ Champion.  
+**AV35.** Ejecutar mismatch de versión y comprobar fallo controlado.  
+**AV36.** Ejecutar mismatch de hash y comprobar fallo controlado.  
+**AV37.** Registrar veredicto de cierre del MVP técnico local.
 
 ---
 
@@ -630,9 +674,11 @@ HU010 puede declararse:
 
 únicamente cuando:
 
-- E01–E18 tienen resultado honesto;
-- happy path HTTP real está demostrado;
+- E01–E19 tienen resultado honesto;
+- happy path HTTP real está demostrado con contratos coincidentes;
 - API/SQLite/Champion materializado están correlacionados;
+- feature contract version/hash coinciden exactamente en el happy path;
+- mismatch contractual está probado y bloquea `COMPLETED`;
 - latest/history/run funcionan después del POST;
 - idempotencia está demostrada;
 - runs fallidos no destruyen latest;
@@ -669,3 +715,41 @@ Esas capacidades requieren historias posteriores si el proyecto evoluciona más 
 ## 21. Regla final
 
 > HU010 no agrega inteligencia nueva al sistema. Demuestra que la inteligencia ya producida por el Champion atraviesa correctamente contratos, persistencia, API y dashboard, y que consultar esa inteligencia no vuelve a ejecutarla.
+
+---
+
+## 22. Evidencia ejecutada en PR #33 — hallazgo actual
+
+La validación HTTP real fue ejecutada con Uvicorn y `httpx`, sin `TestClient`, usando la composición local explícita y `champion_output.json` real. Resultados observados:
+
+```text
+GET  /api/v2/health                 200
+POST /api/v2/monthly-runs           201
+GET  /api/v2/predictions/latest     200
+GET  /api/v2/predictions/history    200
+GET  /api/v2/runs/{run_id}          200
+run.status                           COMPLETED
+predictions                          4
+```
+
+SQLite persistió un run y cuatro predicciones, y la regresión combinada de los E2E controlado + Champion real quedó:
+
+```text
+16 passed, 1 warning
+```
+
+Sin embargo, se detectó:
+
+```text
+Champion JSON
+feature_contract_version = pr12-f5a2d39
+feature_contract_sha256   = 3af245ede70851d1616439d80441e2ad6f5d3f6465b9798d6b67fed3adb3e3dc
+
+CSV/API vigente
+feature_contract_version = pr12-74e385c3
+feature_contract_sha256   = 786ef0b5be829efe763e6c3eea385f90660e5bc191bf1469e02885d02e95e5ba
+```
+
+Por tanto, el transporte HTTP, orquestación y persistencia quedan demostrados, pero la integración completa **NO está aprobada** hasta implementar el gate de HU004 y repetir E02/E03/E19 con contratos alineados.
+
+**Veredicto vigente:** `HTTP E2E REAL: NO APROBADO — FEATURE CONTRACT MISMATCH`.
