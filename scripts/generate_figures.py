@@ -6,6 +6,7 @@ Uso: python scripts/generate_figures.py
 import json
 import os
 import pickle
+import sys
 
 import matplotlib
 matplotlib.use("Agg")
@@ -24,7 +25,9 @@ DIVIPOLAS = {"68001": "Bucaramanga", "76001": "Cali"}
 CLR_CITY  = {"68001": "#1654A2", "76001": "#BE1D2B"}
 ZONA_CLR  = {0: "#22A24A", 1: "#E99A00", 2: "#E83545"}
 ZONA_LBL  = {0: "Normal", 1: "Alerta", 2: "Exceso"}
-TRAIN_END = 2023
+sys.path.insert(0, os.path.dirname(__file__))
+from model_utils import ANIO_FIN_TRAIN
+TRAIN_END = ANIO_FIN_TRAIN  # 2022, importado de src/evaluation/splits.py
 PROHIBIDAS = {
     "divipola", "municipio", "departamento", "periodo",
     "anio", "mes", "casos_grave", "casos_clasico", "brote", "es_inicio",

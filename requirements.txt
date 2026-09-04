@@ -1,27 +1,39 @@
-
-numpy>=1.24
-scikit-learn>=1.3
-xgboost>=2.0
-lightgbm>=4.0
-pygam>=0.9
-mlflow>=2.10
-dash>=2.14
-dash-bootstrap-components>=1.5
-plotly>=5.18
-
+# Datos y modelado
 pandas==3.0.5
 pyarrow==25.0.1
+numpy>=2.0
+scipy>=1.16
+scikit-learn==1.8.0
+
+# Modelos
+xgboost>=3.0
+lightgbm>=4.7
+pygam>=0.12
+shap>=0.46
+
+# Seguimiento de experimentos. No cambiar por mlflow completo: ese fija
+# pandas<3 y obligaria a bajar la version de pandas del proyecto.
+mlflow-skinny==2.22.0
+
+# Reportes y figuras
+matplotlib==3.11.1
+python-docx>=1.1
 openpyxl==3.1.5
+
+# Ingesta
 kagglehub==1.0.2
 python-dotenv==1.2.3
 python-calamine==0.8.2
-matplotlib==3.11.1
-scikit-learn==1.8.0
-mlflow-skinny==2.22.0
 
-# HU001: FastAPI base and focused contract tests
+# API
 fastapi>=0.115,<1
 uvicorn>=0.30,<1
+python-multipart>=0.0.9,<1
+
+# Pruebas
 pytest>=8,<10
 httpx>=0.27,<1
-python-multipart>=0.0.9,<1
+
+# Solo para regenerar la exportacion climatica desde Google Earth Engine.
+# No hace falta para correr el pipeline con los datos ya descargados.
+# earthengine-api>=1.0
