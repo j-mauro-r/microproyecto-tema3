@@ -16,6 +16,7 @@ from api.app.orchestration.monthly import (
 )
 from api.app.schemas.errors import ErrorCode
 from api.app.schemas.runs import RunStatus
+from api.app.query.service import HistoryFilters
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (
@@ -226,6 +227,86 @@ class SQLitePredictionRepository:
             "SELECT * FROM runs WHERE run_id = ?", (run_id,)
         ).fetchone()
         return _load_snapshot(self._connection, run) if run else None
+
+
+class SQLitePredictionQueryRepository:
+    """Open a query-only connection for each operation; never starts a write transaction."""
+
+    def __init__(self, db_path: str) -> None:
+        if not db_path.strip():
+            raise ValueError("db_path must not be empty")
+        self._db_path = db_path
+
+    def _connect(self) -> sqlite3.Connection:
+        uri = f"{Path(self._db_path).resolve().as_uri()}?mode=ro"
+        connection = sqlite3.connect(uri, uri=True, timeout=10, isolation_level=None)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA query_only = ON")
+        return connection
+
+    def get_run(self, run_id: str) -> MonthlyRunResult | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM runs WHERE run_id = ?", (run_id,)
+            ).fetchone()
+            return _row_to_run(connection, row) if row else None
+
+    def get_latest_completed(
+        self, municipality_codes: tuple[str, ...], horizons: tuple[str, ...]
+    ) -> MonthlyRunResult | None:
+        predicate, parameters = _prediction_filter(municipality_codes, horizons)
+        with self._connect() as connection:
+            row = connection.execute(
+                f"""SELECT runs.* FROM runs
+                    WHERE runs.status = ? AND runs.completed_at IS NOT NULL
+                      AND EXISTS (
+                          SELECT 1 FROM predictions
+                          WHERE predictions.run_id = runs.run_id AND {predicate}
+                      )
+                    ORDER BY runs.completed_at DESC, runs.run_id DESC
+                    LIMIT 1""",
+                (RunStatus.COMPLETED.value, *parameters),
+            ).fetchone()
+            return _row_to_run(connection, row) if row else None
+
+    def list_completed(self, filters: HistoryFilters) -> tuple[MonthlyRunResult, ...]:
+        horizons = (filters.horizon,) if filters.horizon else ("T+1", "T+2")
+        predicate, prediction_parameters = _prediction_filter(
+            filters.municipality_codes, horizons
+        )
+        conditions = [
+            "runs.status = ?", "runs.completed_at IS NOT NULL",
+            f"EXISTS (SELECT 1 FROM predictions WHERE predictions.run_id = runs.run_id AND {predicate})",
+        ]
+        parameters: list[object] = [RunStatus.COMPLETED.value, *prediction_parameters]
+        if filters.from_month is not None:
+            conditions.append("runs.reference_month >= ?")
+            parameters.append(filters.from_month)
+        if filters.to_month is not None:
+            conditions.append("runs.reference_month <= ?")
+            parameters.append(filters.to_month)
+        parameters.extend((filters.limit, filters.offset))
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""SELECT runs.* FROM runs
+                    WHERE {' AND '.join(conditions)}
+                    ORDER BY runs.reference_month DESC, runs.completed_at DESC, runs.run_id DESC
+                    LIMIT ? OFFSET ?""",
+                parameters,
+            ).fetchall()
+            return tuple(_row_to_run(connection, row) for row in rows)
+
+
+def _prediction_filter(
+    municipality_codes: tuple[str, ...], horizons: tuple[str, ...]
+) -> tuple[str, tuple[str, ...]]:
+    municipality_marks = ", ".join("?" for _ in municipality_codes)
+    horizon_marks = ", ".join("?" for _ in horizons)
+    return (
+        f"predictions.divipola IN ({municipality_marks}) "
+        f"AND predictions.horizon IN ({horizon_marks})",
+        (*municipality_codes, *horizons),
+    )
 
 
 def _row_to_run(
