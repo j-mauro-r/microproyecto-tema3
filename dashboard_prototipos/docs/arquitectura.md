@@ -288,6 +288,15 @@ puertos `RunRepository` y `PredictionRepository`. `COMPLETED` se escribe dentro 
 la misma transacción que el run y el snapshot, inmediatamente antes del commit.
 La ruta se obtiene de `BIOMAC_DB_PATH` y la implementación no requiere red ni nube.
 
+### Consulta read-only HU007
+
+Los tres GET contractuales siguen `FastAPI → QueryService → QueryRepository →
+SQLite → DTO`. El repositorio abre conexiones SQLite `mode=ro` y activa
+`PRAGMA query_only`; no inicia unidades de trabajo ni transacciones de escritura.
+Los servicios de consulta no importan `sqlite3`, Champion, adapters u orquestación
+de inferencia. Por ello Refresh funciona aunque el runtime Champion no esté
+configurado, siempre que la base de `BIOMAC_DB_PATH` exista.
+
 ## 10. Idempotencia y consistencia
 
 Una carga debe identificarse mediante:

@@ -195,8 +195,9 @@ Para `COMPLETED`, `stage` puede ser `null` o `COMPLETED`. Para `FAILED`, `error`
 |---|---|---:|---|
 | `municipality_codes` | string repetible/csv | No | `68001`,`76001`; default ambas |
 | `horizons` | string repetible/csv | No | `T+1`,`T+2`; default ambas |
-| `history_months` | integer | No | `0..240`; default `36` |
-| `include_explanations` | boolean | No | default `true` |
+
+`history_months` e `include_explanations` quedan diferidos a HU009: HU007 no los
+acepta ni fabrica historia o explicaciones que no estén persistidas.
 
 ### 8.2 Semántica
 
@@ -206,6 +207,11 @@ Devuelve el último snapshot cuyo run terminó `COMPLETED`.
 - apertura inicial del dashboard;
 - botón `Refresh`;
 - actualización automática posterior a un upload exitoso.
+
+La respuesta HU007 usa el contrato mínimo real documentado en 6.3:
+`prediction_snapshot` contiene run, timestamps, corte, hash fuente, Champion y
+`predictions` planas con outputs nullable preservados. El schema enriquecido de
+la sección 10 es el objetivo compatible hacia adelante de HU009.
 
 ---
 
@@ -220,6 +226,10 @@ Filtros mínimos:
 - `offset`.
 
 Devuelve snapshots persistidos, no backtesting reconstruido bajo demanda.
+
+Orden: `reference_month DESC`, `completed_at DESC`, `run_id DESC`. `limit` vale
+20 por defecto (1..100) y `offset` vale 0 por defecto. Una colección vacía
+responde `200` con `items=[]`; `latest` vacío responde `404 PREDICTION_NOT_FOUND`.
 
 ---
 

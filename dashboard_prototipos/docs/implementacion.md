@@ -427,6 +427,8 @@ La interfaz debe permitir migrar posteriormente a una base de datos sin cambiar 
 
 # HU-INT-007 — API de consulta read-only
 
+**Estado:** `[COMPLETADA — DESARROLLO]`
+
 **Como** usuario consultor  
 **quiero** consultar resultados ya calculados  
 **para** abrir o refrescar el dashboard sin ejecutar nuevamente el Champion.
@@ -442,6 +444,12 @@ Filtros permitidos según endpoint:
 - horizonte;
 - periodo;
 - límite/paginación para historial.
+
+La implementación usa `RunQueryService`/`PredictionQueryService` y un repositorio
+SQLite abierto en modo read-only (`mode=ro` + `query_only`). `latest` ordena solo
+runs `COMPLETED` por `completed_at DESC, run_id DESC`; `history` ordena por
+`reference_month`, `completed_at` y `run_id`, todos descendentes. Ningún GET
+depende de la disponibilidad del Champion.
 
 ## Criterios de aceptación
 
