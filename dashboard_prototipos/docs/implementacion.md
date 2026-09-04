@@ -1,7 +1,7 @@
 # BIOMAC — Plan de implementación del flujo operativo de predicción
 
 **Estado:** plan vigente del MVP técnico local  
-**Versión:** `1.2.0`  
+**Versión:** `1.2.1`  
 **Fuente arquitectónica:** `arquitectura.md`  
 **Contrato API:** `API-sign.md`  
 **Diccionario:** `diccionario-de-datos.md`  
@@ -18,6 +18,7 @@ analista carga CSV mensual ya preparado
 → backend valida la carga
 → backend construye ChampionInput
 → ChampionService obtiene ChampionOutput
+→ backend valida feature contract input ↔ Champion
 → se mapea y persiste el snapshot
 → dashboard consulta/muestra el resultado
 → Refresh consulta únicamente el último snapshot persistido
@@ -78,7 +79,7 @@ Estos elementos pueden formar parte de una evolución posterior, pero **no se do
 │ ├─ HU001 contratos/API              │
 │ ├─ HU002 validación CSV             │
 │ ├─ HU003 ChampionInput              │
-│ ├─ HU004 ChampionService            │
+│ ├─ HU004 ChampionService + gate     │
 │ ├─ HU005 orquestación               │
 │ ├─ HU006 SQLite                     │
 │ ├─ HU007 API read-only              │
@@ -100,7 +101,9 @@ Reglas vigentes:
 - `GET latest`, `GET history`, `GET runs/{run_id}` y Refresh son read-only;
 - no existe fallback productivo a mocks;
 - datos no disponibles permanecen `null`/`available=false`;
-- ningún GET ejecuta Champion, genera SHAP, accede a DVC/S3 ni entrena modelos.
+- ningún GET ejecuta Champion, genera SHAP, accede a DVC/S3 ni entrena modelos;
+- `feature_contract_version` y `feature_contract_sha256` deben coincidir entre input/API y Champion antes de mapping/persistencia;
+- un mismatch contractual produce `FAILED`, no `COMPLETED`.
 
 ### 2.2 Arquitectura futura de deployment — referencia, no gate actual
 
@@ -124,14 +127,14 @@ DVC/S3 puede utilizarse durante deployment para materializar datos/artefactos, y
 |---:|---|---|---|---|---|
 | 1 | HU-INT-001 | Base FastAPI y contratos | API v2, configuración, health, schemas y errores comunes. | arquitectura/API | COMPLETADA |
 | 2 | HU-INT-002 | Carga mensual y validación | Validar CSV mensual ya preparado, periodo, ciudades, 39 features y hash. | HU001 | COMPLETADA |
-| 3 | HU-INT-003 | Adaptación a ChampionInput | Ordenar/convertir la carga validada al contrato exacto del Champion. | HU002 | COMPLETADA |
-| 4 | HU-INT-004 | Adapter/servicio del Champion | Exponer `ChampionOutput` detrás de una frontera estable e intercambiable. | HU003 + Champion | COMPLETADA |
-| 5 | HU-INT-005 | Orquestación del run | Coordinar validación → preparación → Champion → mapeo. | HU002/003/004 | COMPLETADA |
+| 3 | HU-INT-003 | Adaptación a ChampionInput | Ordenar/convertir la carga validada al contrato exacto del Champion y transportar version/hash. | HU002 | COMPLETADA — HANDOFF REFORZADO |
+| 4 | HU-INT-004 | Adapter/servicio del Champion | Exponer `ChampionOutput` detrás de una frontera estable e intercambiable y validar compatibilidad contractual. | HU003 + Champion | AJUSTE PENDIENTE |
+| 5 | HU-INT-005 | Orquestación del run | Coordinar validación → preparación → Champion → mapping. | HU002/003/004 | COMPLETADA |
 | 6 | HU-INT-006 | Persistencia y trazabilidad | Persistir runs/snapshots e idempotencia durable en SQLite. | HU005 | COMPLETADA |
 | 7 | HU-INT-007 | API de consulta | `latest`, `history` y detalle de run sin ejecutar Champion. | HU006 | COMPLETADA |
 | 8 | HU-INT-008 | Integración dashboard | Sustituir mocks por HTTP, upload y Refresh read-only. | HU005/007 | COMPLETADA |
 | 9 | HU-INT-009 | Metadata, calidad y explicabilidad | Enriquecer solo con información real/nullable y explicación local cuando exista. | HU004/006/007/008 | COMPLETADA |
-| 10 | HU-INT-010 | Pruebas E2E y cierre local | Validar HU001–HU009 de extremo a extremo y cerrar el MVP técnico local. | HU001–HU009 | EN IMPLEMENTACIÓN |
+| 10 | HU-INT-010 | Pruebas E2E y cierre local | Validar HU001–HU009 de extremo a extremo y cerrar el MVP técnico local. | HU001–HU009 | BLOQUEADA — FEATURE CONTRACT MISMATCH |
 
 ---
 
@@ -197,6 +200,10 @@ Responsabilidades:
 
 HU003 no crea lags/rolling/percentiles/canal, no imputa, no lee `features_mensual.parquet` en runtime y no ejecuta el Champion.
 
+### Ajuste documental derivado de HU010
+
+`feature_contract_version` y `feature_contract_sha256` producidos/transportados por HU003 son el contrato efectivo del input del run. HU003 no debe reemplazarlos ni alinearlos artificialmente con el Champion. HU004 debe usarlos para la comparación obligatoria antes de aceptar la salida.
+
 ---
 
 # HU-INT-004 — Frontera del Champion
@@ -208,6 +215,7 @@ HU004 expone una frontera estable mediante `ChampionService`/`ChampionOutput` pa
 ```text
 ChampionResult PR12
 → MaterializedOutputAdapter
+→ feature contract gate
 → ChampionOutput
 ```
 
@@ -216,12 +224,32 @@ ChampionResult PR12
 ```text
 ChampionInput
 → ExecutableChampionAdapter
+→ feature contract gate
 → ChampionOutput
 ```
 
 No existe fallback automático entre estrategias.
 
 `ChampionOutput` conserva únicamente datos respaldados por la fuente real: municipio, horizonte, target month, output nativo, probability cuando existe, threshold real por horizonte, label cuando corresponde y metadata del Champion.
+
+### Gate obligatorio pendiente
+
+Antes de entregar un output válido debe cumplirse:
+
+```text
+champion.feature_contract_version == input.feature_contract_version
+champion.feature_contract_sha256   == input.feature_contract_sha256
+```
+
+Si no coincide:
+
+```text
+FAILED
+CHAMPION_INPUT_INVALID
+reason = feature_contract_mismatch
+```
+
+No debe alcanzarse mapping/persistencia exitosa ni `201 COMPLETED`.
 
 DVC/S3/MLflow no forman parte obligatoria de cada request.
 
@@ -236,6 +264,7 @@ RECEIVED
 → VALIDATING
 → PREPARING
 → INFERENCING
+→ CONTRACT CHECK
 → MAPPING
 → READY_TO_PERSIST
 ```
@@ -345,7 +374,7 @@ Una importancia global nunca se presenta como SHAP local. Snapshots HU006 legacy
 
 # HU-INT-010 — Pruebas E2E y cierre local
 
-**Estado:** `[DEFINIDA — EN IMPLEMENTACIÓN]`
+**Estado:** `[IMPLEMENTADA — BLOQUEADA POR FEATURE CONTRACT MISMATCH]`
 
 **Como** equipo BIOMAC, **quiero** demostrar que HU001–HU009 funcionan juntas de forma reproducible **para** cerrar el MVP técnico local con evidencia verificable.
 
@@ -364,20 +393,21 @@ CSV mensual válido
 → POST monthly-runs
 → HU002/HU003
 → ChampionService HU004
+→ feature contract gate
 → HU005
 → HU006 SQLite
 → GET latest/history/run
 → Dashboard HTTP
 ```
 
-La prueba académica puede usar una salida materializada real de PR #12, manteniendo PR12 y `main` en checkouts/worktrees separados.
+La prueba académica usa una salida materializada real de PR #12, manteniendo PR12 y `main`/rama de integración en checkouts separados.
 
 ## Escenarios obligatorios
 
 HU010 cubre, como mínimo:
 
 1. health local;
-2. POST válido → `201 COMPLETED`;
+2. POST válido → `201 COMPLETED` solo con contratos coincidentes;
 3. correspondencia Champion ↔ API para Bucaramanga/Cali × T+1/T+2;
 4. persistencia SQLite del mismo run;
 5. `GET latest`;
@@ -393,7 +423,8 @@ HU010 cubre, como mínimo:
 15. frontend happy path;
 16. upload frontend → latest + history actualizados;
 17. Refresh frontend latest-only;
-18. error frontend sin pérdida del snapshot ni fallback mock.
+18. error frontend sin pérdida del snapshot ni fallback mock;
+19. feature contract mismatch → `FAILED`, sin nuevo snapshot `COMPLETED`.
 
 ## Corrección de integración incluida en HU010
 
@@ -413,6 +444,7 @@ El botón Refresh manual sigue ejecutando únicamente `latest`.
 - estados válidos: `PASS`, `FAIL`, `BLOCKED`, `NOT_RUN`, `OUT_OF_SCOPE`;
 - golden fixture solo si deriva de una salida real PR12 con SHA, periodo y hash documentados;
 - no se inventan predicciones para automatizar E2E;
+- no se editan hashes/versiones contractuales para forzar compatibilidad;
 - Browser E2E puede automatizarse con Playwright solo si se implementa y ejecuta de forma reproducible; de lo contrario se documenta como manual;
 - AWS/deployment remoto se marca `OUT_OF_SCOPE`, no PASS.
 
@@ -426,8 +458,9 @@ HU010 puede declararse:
 
 cuando:
 
-- el POST real produce `COMPLETED`;
+- el POST real produce `COMPLETED` con feature contract idéntico;
 - Champion/API/SQLite coinciden;
+- mismatch contractual falla controladamente;
 - latest/history/run funcionan;
 - idempotencia está demostrada;
 - fallos conservan latest;
@@ -448,20 +481,22 @@ cuando:
 La secuencia vigente de cierre es:
 
 ```text
-1. Main contiene HU001–HU009 aprobadas
+1. Main/rama contiene HU001–HU009 aprobadas
 2. Crear/activar entorno Python local
 3. Ejecutar baseline API
 4. Preparar SQLite dedicada de prueba
 5. Materializar/configurar ChampionService local
 6. Preparar CSV mensual compatible HU002
-7. Levantar FastAPI/Uvicorn local
-8. Verificar GET /api/v2/health
-9. Configurar VITE_BIOMAC_API_BASE_URL del frontend local
-10. Ejecutar POST → COMPLETED
-11. Verificar latest/history/run y SQLite
-12. Verificar idempotencia/errores/restart/read-only
-13. Ejecutar frontend y pruebas de integración
-14. Registrar evidencia y resultados reales
+7. Comparar feature contract input/API ↔ Champion
+8. Levantar FastAPI/Uvicorn local
+9. Verificar GET /api/v2/health
+10. Configurar VITE_BIOMAC_API_BASE_URL del frontend local
+11. Ejecutar POST → COMPLETED solo si contrato coincide
+12. Verificar latest/history/run y SQLite
+13. Ejecutar mismatch → FAILED controlado
+14. Verificar idempotencia/errores/restart/read-only
+15. Ejecutar frontend y pruebas de integración
+16. Registrar evidencia y resultados reales
 ```
 
 No forman parte del ciclo normal de request:
@@ -483,13 +518,13 @@ Una futura fase podrá incluir clone/pull en EC2, materialización de artefactos
 
 El **MVP técnico local** se considera cerrado cuando:
 
-- HU001–HU009 están completadas;
+- HU001–HU009 están completadas, incluido el ajuste contractual de HU004;
 - HU010 demuestra el flujo E2E local con evidencia reproducible;
 - `HttpDengueRepository` es la fuente normal del dashboard;
 - el upload mensual dispara la nueva ejecución;
 - HU002 valida el CSV ya preparado;
-- HU003 produce un `ChampionInput` reproducible;
-- HU004 entrega `ChampionOutput` trazable detrás de una frontera intercambiable;
+- HU003 produce un `ChampionInput` reproducible y conserva feature contract version/hash;
+- HU004 entrega `ChampionOutput` trazable detrás de una frontera intercambiable y bloquea mismatches;
 - una predicción exitosa se persiste antes del 201;
 - `latest`, `history`, `run` y Refresh leen resultados persistidos sin inferencia;
 - errores no destruyen el último resultado válido;
@@ -515,7 +550,7 @@ No forma parte de la definición de terminado del Entregable 2. Incluye, entre o
 
 ## 6. Regla arquitectónica HU004 para HU005–HU010
 
-A partir de HU005, el sistema recibe un `ChampionService` y entrega un `ChampionOperationalContext` neutral a `produce(...)`. El resultado es `ChampionOutput`.
+A partir de HU005, el sistema recibe un `ChampionService` y entrega un `ChampionOperationalContext` neutral a `produce(...)`. El resultado es `ChampionOutput` únicamente si superó el gate contractual.
 
 HU005–HU010 no pueden depender estructuralmente de `ChampionResult`, JSON físico, `generate_champion_output.py`, pickle/XGBoost, `.whl` o de cómo se produjo la predicción.
 
@@ -524,6 +559,7 @@ Flujo conceptual:
 ```text
 ChampionService configurado en HU004
 → produce(operational_context)
+→ validar feature contract
 → ChampionOutput
 → HU005 ResultMapper/orquestación
 → HU006 persistencia
@@ -537,10 +573,12 @@ Cambiar de `MaterializedOutputAdapter` a `ExecutableChampionAdapter` debe requer
 
 ---
 
-## 7. Estado al iniciar HU010
+## 7. Estado al continuar HU010
 
-- HU001–HU009: `[COMPLETADAS — DESARROLLO]`.
-- HU010: definida en `hu010_e2e_cierre_integracion.md`, pendiente de implementación/auditoría final.
+- HU001–HU002 y HU005–HU009: `[COMPLETADAS — DESARROLLO]`.
+- HU003: `[COMPLETADA — DESARROLLO / HANDOFF CONTRACTUAL REFORZADO]`.
+- HU004: `[AJUSTE DE INTEGRACIÓN PENDIENTE — FEATURE CONTRACT GATE]`.
+- HU010: `[IMPLEMENTADA — BLOQUEADA POR FEATURE CONTRACT MISMATCH]`.
 - Persistencia actual: SQLite local.
 - Frontend: React + `HttpDengueRepository` + React Query.
 - Explicación SHAP operacional: unavailable salvo que se materialice/configure una fuente local compatible.
@@ -548,12 +586,60 @@ Cambiar de `MaterializedOutputAdapter` a `ExecutableChampionAdapter` debe requer
 
 ## 8. Resultado de implementación HU010
 
-`api/tests/test_e2e_local.py` compone FastAPI, HU002–HU009 y SQLite temporal
-reales. Valida POST, persistencia, latest/history/run, idempotencia, reinicio,
-errores y cero inferencia en GET. El frontend invalida latest e history tras POST
-exitoso y conserva Refresh como latest-only.
+Se validaron dos niveles:
 
-El ensamblaje local automatizado usa un provider materializado controlado. El
-golden epidemiológico real de PR12 permanece bloqueado hasta materializar
-`features_mensual.parquet` y capturar su salida sin modificarla. AWS/Lovable
-remoto sigue siendo evolución futura y no está validado.
+```text
+pytest -q api/tests/test_e2e_champion_real.py
+8 passed, 1 warning
+
+pytest -q api/tests/test_e2e_local.py api/tests/test_e2e_champion_real.py
+16 passed, 1 warning
+```
+
+Además se levantó FastAPI con Uvicorn real y se ejecutó HTTP mediante `httpx`, sin `TestClient`:
+
+```text
+GET  /api/v2/health                 200
+POST /api/v2/monthly-runs           201
+GET  /api/v2/predictions/latest     200
+GET  /api/v2/predictions/history    200
+GET  /api/v2/runs/{run_id}          200
+run.status                           COMPLETED
+predictions                          4
+```
+
+Persistencia observada:
+
+```text
+runs                     1
+predictions              4
+snapshot_quality         1
+current_status           2
+prediction_enrichments   4
+champion_enrichments     1
+```
+
+Las cuatro probabilidades/thresholds/labels coincidieron con `champion_output.json`. Sin embargo, el E2E descubrió esta incompatibilidad:
+
+```text
+Champion JSON
+feature_contract_version = pr12-f5a2d39
+feature_contract_sha256   = 3af245ede70851d1616439d80441e2ad6f5d3f6465b9798d6b67fed3adb3e3dc
+
+CSV/API vigente
+feature_contract_version = pr12-74e385c3
+feature_contract_sha256   = 786ef0b5be829efe763e6c3eea385f90660e5bc191bf1469e02885d02e95e5ba
+```
+
+El adapter materializado preserva la metadata, pero la implementación actual no exige igualdad antes de devolver `COMPLETED`. Por ello:
+
+```text
+Infra/API HTTP:                APROBADO
+Persistencia SQLite:           APROBADA
+Correspondencia de outputs:    APROBADA
+Feature contract Model→API:    NO APROBADO
+HTTP E2E REAL:                 NO APROBADO
+HU010:                         BLOQUEADA
+```
+
+El siguiente ajuste es implementar el gate HU004, alinear el contrato canónico entre PR12 y API sin reescribir metadata artificialmente y repetir el happy path + escenario mismatch.
