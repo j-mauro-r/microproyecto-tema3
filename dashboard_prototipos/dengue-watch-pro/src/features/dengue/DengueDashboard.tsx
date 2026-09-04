@@ -70,9 +70,7 @@ export function DengueDashboard() {
     useDengueDashboard();
 
   const empty =
-    latest.error instanceof BiomacApiError &&
-    latest.error.code === "PREDICTION_NOT_FOUND";
-
+    latest.error instanceof BiomacApiError && latest.error.code === "PREDICTION_NOT_FOUND";
 
   if (latest.isPending) {
     return (
@@ -84,7 +82,6 @@ export function DengueDashboard() {
       </main>
     );
   }
-
 
   if (latest.isPending) {
     return (
