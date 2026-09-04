@@ -30,3 +30,5 @@ mlruns/
 *.db-shm
 *.sqlite-wal
 *.sqlite-shm
+.DS_Store
+**/.DS_Store
