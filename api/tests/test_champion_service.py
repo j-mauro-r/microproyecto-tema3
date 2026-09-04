@@ -24,13 +24,13 @@ from api.app.domain.errors import ContractError
 from api.app.schemas.errors import ErrorCode
 
 
-def pr12_result():
-    return {
+def pr12_result(**overrides):
+    result = {
         "model_name": "biomac-champion",
         "model_version": "service-test",
         "reference_month": "2025-12",
-        "feature_contract_version": "pr12-contract",
-        "feature_contract_sha256": "pr12-sha",
+        "feature_contract_version": CHAMPION_FEATURE_CONTRACT_VERSION,
+        "feature_contract_sha256": CHAMPION_FEATURE_CONTRACT_SHA256,
         "output_type": "probability",
         "predictions": [
             {
@@ -49,6 +49,8 @@ def pr12_result():
             for horizon in ("T+1", "T+2")
         ],
     }
+    result.update(overrides)
+    return result
 
 
 def executable_input():
@@ -164,6 +166,30 @@ def test_materialized_strategy_resolves_result_internally_and_preserves_threshol
     assert [prediction.decision_threshold for prediction in output.predictions] == [
         0.61, 0.67, 0.61, 0.67
     ]
+
+
+@pytest.mark.parametrize(
+    ("overrides", "mismatched_fields"),
+    [
+        ({"feature_contract_version": "other"}, {"received_version": "other"}),
+        ({"feature_contract_sha256": "other"}, {"received_sha256": "other"}),
+        (
+            {"feature_contract_version": "other", "feature_contract_sha256": "other"},
+            {"received_version": "other", "received_sha256": "other"},
+        ),
+    ],
+)
+def test_materialized_feature_contract_gate_rejects_every_mismatch(
+    overrides, mismatched_fields
+):
+    service, _ = materialized_service(lambda: pr12_result(**overrides))
+    with pytest.raises(ContractError) as error:
+        service.produce(ChampionOperationalContext("2025-12", "source-sha"))
+    assert error.value.code is ErrorCode.CHAMPION_INPUT_INVALID
+    assert error.value.details["reason"] == "feature_contract_mismatch"
+    assert error.value.details["expected_version"] == CHAMPION_FEATURE_CONTRACT_VERSION
+    assert error.value.details["expected_sha256"] == CHAMPION_FEATURE_CONTRACT_SHA256
+    assert error.value.details.items() >= mismatched_fields.items()
 
 
 def test_executable_strategy_resolves_input_internally_and_keeps_load_once():

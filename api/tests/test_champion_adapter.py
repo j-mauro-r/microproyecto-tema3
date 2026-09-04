@@ -97,19 +97,44 @@ def test_valid_two_by_thirty_nine_input_maps_bucaramanga_and_cali(champion_input
 
 
 @pytest.mark.parametrize(
-    ("field", "value", "reason"),
+    ("field", "value"),
     [
-        ("feature_contract_version", "other", "feature_contract_version_mismatch"),
-        ("feature_contract_sha256", "other", "feature_contract_sha256_mismatch"),
+        ("feature_contract_version", "other"),
+        ("feature_contract_sha256", "other"),
     ],
 )
-def test_feature_contract_mismatch_blocks_inference(champion_input, field, value, reason):
+def test_feature_contract_mismatch_blocks_inference(champion_input, field, value):
     adapter = LazyChampionAdapter(CountingLoader(FakeRuntime(metadata())))
     with pytest.raises(ContractError) as error:
         adapter.predict(replace(champion_input, **{field: value}))
     assert error.value.code == ErrorCode.CHAMPION_INPUT_INVALID
-    assert error.value.stage == RunStatus.PREPARING
-    assert error.value.details == {"reason": reason}
+    assert error.value.stage == RunStatus.INFERENCING
+    assert error.value.details["reason"] == "feature_contract_mismatch"
+    assert error.value.details["expected_version"] == getattr(
+        replace(champion_input, **{field: value}), "feature_contract_version"
+    )
+    assert error.value.details["expected_sha256"] == getattr(
+        replace(champion_input, **{field: value}), "feature_contract_sha256"
+    )
+
+
+def test_both_feature_contract_identifiers_must_match(champion_input):
+    incompatible = replace(
+        champion_input,
+        feature_contract_version="other-version",
+        feature_contract_sha256="other-sha256",
+    )
+    adapter = LazyChampionAdapter(CountingLoader(FakeRuntime(metadata())))
+    with pytest.raises(ContractError) as error:
+        adapter.predict(incompatible)
+    assert error.value.code is ErrorCode.CHAMPION_INPUT_INVALID
+    assert error.value.details == {
+        "reason": "feature_contract_mismatch",
+        "expected_version": "other-version",
+        "received_version": CHAMPION_FEATURE_CONTRACT_VERSION,
+        "expected_sha256": "other-sha256",
+        "received_sha256": CHAMPION_FEATURE_CONTRACT_SHA256,
+    }
 
 
 def test_t1_only_champion_never_creates_t2(champion_input):

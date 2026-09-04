@@ -9,6 +9,7 @@ from threading import Lock
 from typing import Protocol
 
 from api.app.champion.models import ChampionMetadata, ChampionOutput, ChampionPrediction
+from api.app.champion.feature_contract import require_compatible_feature_contract
 from api.app.domain.champion_feature_contract import CHAMPION_FEATURES
 from api.app.domain.champion_input import ChampionInput, MUNICIPALITY_ORDER
 from api.app.domain.errors import ContractError
@@ -114,10 +115,11 @@ class LazyChampionAdapter:
     def _validate_input(
         inference_input: ChampionInput, metadata: ChampionMetadata
     ) -> None:
-        if inference_input.feature_contract_version != metadata.feature_contract_version:
-            LazyChampionAdapter._invalid_input("feature_contract_version_mismatch")
-        if inference_input.feature_contract_sha256 != metadata.feature_contract_sha256:
-            LazyChampionAdapter._invalid_input("feature_contract_sha256_mismatch")
+        require_compatible_feature_contract(
+            expected_version=inference_input.feature_contract_version,
+            expected_sha256=inference_input.feature_contract_sha256,
+            received=metadata,
+        )
         if inference_input.municipalities != MUNICIPALITY_ORDER:
             LazyChampionAdapter._invalid_input("municipality_contract_violation")
         if inference_input.feature_names != CHAMPION_FEATURES:

@@ -78,6 +78,7 @@ class MonthlyRunResult:
     error_stage: RunStatus | None
     error_message: str | None
     completed_at: datetime | None = None
+    error_details: dict[str, object] | None = None
 
 
 class ResultMapper:
@@ -240,17 +241,19 @@ class MonthlyPredictionOrchestrator:
                 error_code=None,
                 error_stage=None,
                 error_message=None,
+                error_details=None,
             )
         except ContractError as exc:
             return self._failed(
                 command, run_id, created_at, stages, current_stage,
-                source_hash, champion_version, exc.code, exc.message,
+                source_hash, champion_version, exc.code, exc.message, exc.details,
             )
         except Exception:
             return self._failed(
                 command, run_id, created_at, stages, current_stage,
                 source_hash, champion_version, ErrorCode.INTERNAL_ERROR,
                 "Ocurrió un error interno durante el run mensual.",
+                None,
             )
 
     def _failed(
@@ -264,6 +267,7 @@ class MonthlyPredictionOrchestrator:
         champion_version: str | None,
         error_code: ErrorCode,
         error_message: str,
+        error_details: dict[str, object] | None,
     ) -> MonthlyRunResult:
         stages.append(RunStatus.FAILED)
         return MonthlyRunResult(
@@ -281,6 +285,7 @@ class MonthlyPredictionOrchestrator:
             error_code=error_code,
             error_stage=error_stage,
             error_message=error_message,
+            error_details=error_details,
         )
 
 

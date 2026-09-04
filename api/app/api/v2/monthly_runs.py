@@ -113,10 +113,13 @@ def _run_failure(result: MonthlyRunResult) -> ContractError:
     code = result.error_code or ErrorCode.INTERNAL_ERROR
     status_code = (
         HTTPStatus.SERVICE_UNAVAILABLE if code is ErrorCode.CHAMPION_NOT_READY
-        else HTTPStatus.UNPROCESSABLE_ENTITY if code is ErrorCode.INVALID_UPLOAD
+        else HTTPStatus.UNPROCESSABLE_ENTITY if code in {
+            ErrorCode.INVALID_UPLOAD, ErrorCode.CHAMPION_INPUT_INVALID
+        }
         else HTTPStatus.INTERNAL_SERVER_ERROR
     )
     return ContractError(
         code, result.error_message or "El run mensual no pudo completarse.",
         status_code=status_code, stage=result.error_stage or RunStatus.FAILED,
+        details=result.error_details or {},
     )

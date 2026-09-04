@@ -8,6 +8,7 @@ from http import HTTPStatus
 from typing import Protocol, runtime_checkable
 
 from api.app.champion.materialized import MaterializedChampionResult
+from api.app.champion.feature_contract import require_compatible_feature_contract
 from api.app.champion.models import ChampionOutput
 from api.app.champion.provider import (
     ChampionExecutionContext,
@@ -17,6 +18,10 @@ from api.app.champion.provider import (
     MaterializedChampionProvider,
 )
 from api.app.domain.champion_input import ChampionInput, ChampionInputBuilder
+from api.app.domain.champion_feature_contract import (
+    CHAMPION_FEATURE_CONTRACT_SHA256,
+    CHAMPION_FEATURE_CONTRACT_VERSION,
+)
 from api.app.domain.errors import ContractError
 from api.app.domain.monthly_uploads import ValidatedMonthlyUpload
 from api.app.schemas.errors import ErrorCode
@@ -109,13 +114,19 @@ class _MaterializedChampionService:
                 details={"reason": "materialized_result_unavailable"},
             ) from exc
         try:
-            return self._output_provider.produce(
+            output = self._output_provider.produce(
                 ChampionExecutionContext(
                     reference_month=context.reference_month,
                     source_file_sha256=context.source_file_sha256,
                     materialized_result=result,
                 )
             )
+            require_compatible_feature_contract(
+                expected_version=CHAMPION_FEATURE_CONTRACT_VERSION,
+                expected_sha256=CHAMPION_FEATURE_CONTRACT_SHA256,
+                received=output.metadata,
+            )
+            return output
         except ContractError:
             raise
         except Exception as exc:
@@ -149,13 +160,19 @@ class _ExecutableChampionService:
                 stage=RunStatus.PREPARING,
                 details={"reason": "champion_input_resolution_failed"},
             ) from exc
-        return self._output_provider.produce(
+        output = self._output_provider.produce(
             ChampionExecutionContext(
                 reference_month=context.reference_month,
                 source_file_sha256=context.source_file_sha256,
                 champion_input=champion_input,
             )
         )
+        require_compatible_feature_contract(
+            expected_version=champion_input.feature_contract_version,
+            expected_sha256=champion_input.feature_contract_sha256,
+            received=output.metadata,
+        )
+        return output
 
 
 def build_champion_service(
