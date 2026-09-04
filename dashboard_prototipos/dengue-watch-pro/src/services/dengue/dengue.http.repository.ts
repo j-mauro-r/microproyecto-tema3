@@ -13,6 +13,7 @@ export class BiomacApiError extends Error {
     public readonly status: number,
     public readonly code?: string,
     public readonly requestId?: string,
+    public readonly details?: unknown,
   ) {
     super(message);
     this.name = "BiomacApiError";
@@ -110,6 +111,7 @@ export class HttpDengueRepository implements DengueRepository {
         response.status,
         envelope?.error?.code,
         envelope?.error?.request_id,
+        envelope?.error?.details,
       );
     }
     return response;

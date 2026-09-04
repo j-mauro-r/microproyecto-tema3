@@ -73,6 +73,7 @@ describe("HttpDengueRepository", () => {
             code: "PREDICTION_NOT_FOUND",
             message: "Sin predicción",
             request_id: "req-2",
+            details: { reason: "no_completed_run" },
           },
         },
         { status: 404 },
@@ -80,7 +81,12 @@ describe("HttpDengueRepository", () => {
     );
     await expect(
       new HttpDengueRepository("https://api.test/api/v2", fetcher).getLatest(),
-    ).rejects.toMatchObject({ status: 404, code: "PREDICTION_NOT_FOUND", requestId: "req-2" });
+    ).rejects.toMatchObject({
+      status: 404,
+      code: "PREDICTION_NOT_FOUND",
+      requestId: "req-2",
+      details: { reason: "no_completed_run" },
+    });
     expect(readFileSync(new URL("./index.ts", import.meta.url), "utf8")).not.toContain(
       "MockDengueRepository",
     );

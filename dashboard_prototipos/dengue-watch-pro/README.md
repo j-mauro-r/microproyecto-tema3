@@ -6,7 +6,7 @@ OBJETIVO
 
 Crear un dashboard que permita responder:
 
-“¿Existe riesgo de que se presente un exceso de casos de dengue grave en Bucaramanga y Cali dentro de los próximos dos meses, de manera que se puedan tomar oportunamente medidas preventivas y de preparación del sistema de salud?”
+“¿Existe riesgo de un exceso de casos de dengue en Bucaramanga y Cali dentro de los próximos dos meses, de manera que se puedan tomar oportunamente medidas preventivas y de preparación del sistema de salud?”
 
 ALCANCE
 

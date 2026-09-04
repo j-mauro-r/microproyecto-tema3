@@ -81,6 +81,45 @@ describe("DengueDashboard states", () => {
     expect(screen.getByRole("button", { name: "Reintentar" })).toBeInTheDocument();
   });
 
+  it("shows an initial technical error and retries latest", () => {
+    const refetch = vi.fn();
+    vi.mocked(useDengueDashboard).mockReturnValue(
+      dashboardState({
+        latest: {
+          isPending: false,
+          error: new BiomacApiError("Storage unavailable", 500),
+          refetch,
+        },
+        snapshot: undefined,
+        predictions: undefined,
+      }),
+    );
+    render(<DengueDashboard />);
+    expect(screen.getByText("Storage unavailable")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+    expect(refetch).toHaveBeenCalledOnce();
+  });
+
+  it("renders the dashboard after a successful retry", () => {
+    vi.mocked(useDengueDashboard).mockReturnValue(
+      dashboardState({
+        latest: {
+          isPending: false,
+          error: new BiomacApiError("Storage unavailable", 500),
+          refetch: vi.fn(),
+        },
+        snapshot: undefined,
+        predictions: undefined,
+      }),
+    );
+    const view = render(<DengueDashboard />);
+    expect(screen.getByText("Storage unavailable")).toBeInTheDocument();
+
+    vi.mocked(useDengueDashboard).mockReturnValue(dashboardState());
+    view.rerender(<DengueDashboard />);
+    expect(screen.getByText("72%")).toBeInTheDocument();
+  });
+
   it("renders real nullable values without converting them", () => {
     vi.mocked(useDengueDashboard).mockReturnValue(dashboardState());
     render(<DengueDashboard />);
@@ -108,5 +147,43 @@ describe("DengueDashboard states", () => {
     expect(screen.getByText(/Se conserva la última predicción válida/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Actualizar vista" }));
     expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the last snapshot visible while a refresh is in progress", () => {
+    vi.mocked(useDengueDashboard).mockReturnValue(
+      dashboardState({
+        latest: {
+          isPending: false,
+          isFetching: true,
+          isError: false,
+          error: null,
+          refetch: vi.fn(),
+        },
+      }),
+    );
+    render(<DengueDashboard />);
+    expect(screen.getByText("72%")).toBeInTheDocument();
+    expect(screen.getByText("Actualizando…")).toBeInTheDocument();
+  });
+
+  it("preserves T+1/T+2 and independent thresholds", () => {
+    const predictions = [
+      snapshot.predictions[0]!,
+      {
+        ...snapshot.predictions[0]!,
+        horizon: "T+2" as const,
+        targetMonth: "2026-10",
+        probability: null,
+        label: null,
+        decisionThreshold: 0.67,
+      },
+    ];
+    vi.mocked(useDengueDashboard).mockReturnValue(dashboardState({ predictions }));
+    render(<DengueDashboard />);
+    expect(screen.getByText(/T\+1/)).toBeInTheDocument();
+    expect(screen.getByText(/T\+2/)).toBeInTheDocument();
+    expect(screen.getByText("0.61")).toBeInTheDocument();
+    expect(screen.getByText("0.67")).toBeInTheDocument();
+    expect(screen.getAllByText("Información no disponible").length).toBeGreaterThan(0);
   });
 });

@@ -90,7 +90,7 @@ export function DengueDashboard() {
     <main className="mx-auto flex max-w-[1400px] flex-col gap-4 px-5 py-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">BIOMAC — Alerta temprana de dengue grave</h1>
+          <h1 className="text-2xl font-bold">BIOMAC — Sistema de alerta temprana de dengue</h1>
           <p className="text-sm text-muted-foreground">
             Corte {snapshot.referenceMonth} · Champion {snapshot.champion.name}{" "}
             {snapshot.champion.version}
