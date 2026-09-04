@@ -745,3 +745,10 @@ del snapshot. Los GET leen exclusivamente SQLite. La estrategia operacional es
 `UnavailableExplanationProvider`: los parquets de PR12 no están materializados en
 esta rama. El provider opcional exige feature contract, municipio, mes y horizonte
 exactos y nunca genera SHAP ni actúa como fallback.
+
+## 30. Frontera E2E local HU010
+
+HU010 verifica el sistema mediante composición explícita de pruebas, sin alterar
+`app = create_app()` ni introducir demo fallback. La persistencia es SQLite real y
+el Champion atraviesa `ChampionService` materializado. Las consultas y Refresh no
+alcanzan el Champion. La validación cloud queda fuera del cierre local.

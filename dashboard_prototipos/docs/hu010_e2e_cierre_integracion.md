@@ -1,6 +1,6 @@
 # HU010 — Pruebas E2E y cierre de integración BIOMAC
 
-**Estado:** `[DEFINIDA — PENDIENTE IMPLEMENTACIÓN]`  
+**Estado:** `[IMPLEMENTADA — BLOQUEADA POR GOLDEN PR12]`
 **Identificador:** `HU-INT-010`  
 **Prioridad:** ALTA  
 **Dependencias:** HU001–HU009 `[COMPLETADAS — DESARROLLO]`  

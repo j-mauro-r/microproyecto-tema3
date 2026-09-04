@@ -1,8 +1,8 @@
 # BIOMAC — Prueba funcional local de API con salida materializada del Champion
 
-**Estado:** guía de ejecución manual  
-**Ámbito:** local-only, posterior a HU006  
-**PR de trabajo:** `#27` — `docs/hu006-persistencia-trazabilidad`  
+**Estado:** guía manual vigente; automatización contractual HU010 disponible
+**Ámbito:** local-only, posterior a HU009
+**PR de trabajo:** `#32` — `docs/hu010-e2e-cierre-local`
 **Modelo/salida Champion:** PR `#12` — `feat/dashboard-sat-dengue`  
 **Objetivo:** comprobar por HTTP que una carga mensual válida recorre FastAPI → HU002/HU005/HU004 → HU006/SQLite y devuelve un run `COMPLETED` con las salidas reales materializadas del Champion.
 
@@ -45,12 +45,16 @@ La prueba confirma:
 - que el API responde `201` únicamente después del commit;
 - que la salida HTTP y SQLite corresponden al mismo run.
 
+La automatización HU010 valida además `latest`, `history`, detalle de run,
+idempotencia, reinicio, enrichments y consultas read-only. Esta guía conserva el
+paso manual indispensable para producir una salida nueva y real de PR12.
+
 No valida todavía:
 
 - ejecución online de XGBoost desde FastAPI;
 - Lovable;
 - AWS;
-- `latest/history` de HU007;
+- deployment/browser remoto;
 - reentrenamiento;
 - feature engineering desde datos crudos.
 

@@ -545,3 +545,15 @@ Cambiar de `MaterializedOutputAdapter` a `ExecutableChampionAdapter` debe requer
 - Frontend: React + `HttpDengueRepository` + React Query.
 - Explicación SHAP operacional: unavailable salvo que se materialice/configure una fuente local compatible.
 - Deployment AWS/Lovable remoto: evolución posterior, fuera del gate HU010.
+
+## 8. Resultado de implementación HU010
+
+`api/tests/test_e2e_local.py` compone FastAPI, HU002–HU009 y SQLite temporal
+reales. Valida POST, persistencia, latest/history/run, idempotencia, reinicio,
+errores y cero inferencia en GET. El frontend invalida latest e history tras POST
+exitoso y conserva Refresh como latest-only.
+
+El ensamblaje local automatizado usa un provider materializado controlado. El
+golden epidemiológico real de PR12 permanece bloqueado hasta materializar
+`features_mensual.parquet` y capturar su salida sin modificarla. AWS/Lovable
+remoto sigue siendo evolución futura y no está validado.
