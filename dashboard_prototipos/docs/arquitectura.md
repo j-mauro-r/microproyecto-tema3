@@ -736,3 +736,12 @@ prohibido acoplar HU005+ a:
 - detalles del provider activo.
 
 Esta regla es el mecanismo explícito para permitir una migración posterior B → A sin refactoring transversal.
+
+## 29. Enrichments persistidos HU009
+
+`ResultMapper` construye calidad/contexto desde el mismo `ValidatedMonthlyUpload`,
+solicita explicación a un provider configurado y persiste todo en la transacción
+del snapshot. Los GET leen exclusivamente SQLite. La estrategia operacional es
+`UnavailableExplanationProvider`: los parquets de PR12 no están materializados en
+esta rama. El provider opcional exige feature contract, municipio, mes y horizonte
+exactos y nunca genera SHAP ni actúa como fallback.

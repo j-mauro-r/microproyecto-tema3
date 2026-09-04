@@ -322,6 +322,11 @@ responde `200` con `items=[]`; `latest` vacío responde `404 PREDICTION_NOT_FOUN
 
 Los valores anteriores son únicamente ejemplos de estructura.
 
+HU009 expone estos enrichments de forma aditiva. En el entorno local vigente,
+`data_quality` y el contexto contractual `p25/p75/zona_canal` están disponibles;
+`observed_cases`, `p50` y `ratio_to_p75` permanecen nulos. La explicación queda
+`available=false` mientras no exista un parquet SHAP configurado y compatible.
+
 ## 11. Reglas de campos críticos
 
 ### `champion`

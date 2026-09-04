@@ -13,6 +13,48 @@ export interface Prediction {
   riskScore: number | null;
   label: string | null;
   decisionThreshold: number | null;
+  decisionRule?: DecisionRule | null;
+  explanation?: LocalExplanation;
+}
+
+export interface DecisionRule {
+  type: string | null;
+  probabilityThreshold: number | null;
+  targetMonthP75: number | null;
+  decisionThresholdCases: number | null;
+  version: string | null;
+}
+
+export interface ExplanationFeature {
+  feature: string;
+  value: number | string | null;
+  contribution: number;
+  group: string | null;
+}
+
+export interface LocalExplanation {
+  available: boolean;
+  method: string | null;
+  scope: string | null;
+  topFeatures: ExplanationFeature[];
+}
+
+export interface DataQuality {
+  status: string;
+  lastObservedMonth: string;
+  epidemiologicalCompleteness: number | null;
+  climateCompleteness: number | null;
+  warnings: string[];
+}
+
+export interface CurrentStatus {
+  referenceMonth: string;
+  observedCases: number | null;
+  p25: number | null;
+  p50: number | null;
+  p75: number | null;
+  ratioToP75: number | null;
+  endemicZone: string | null;
 }
 
 export interface ChampionMetadata {
@@ -22,6 +64,10 @@ export interface ChampionMetadata {
   supportedHorizons: Horizon[];
   featureContractVersion: string;
   featureContractSha256: string;
+  mlflowRunId?: string | null;
+  artifactSha256?: string | null;
+  decisionRuleVersion?: string | null;
+  explanationMethod?: string | null;
 }
 
 export interface PredictionSnapshot {
@@ -31,6 +77,12 @@ export interface PredictionSnapshot {
   sourceFileSha256: string;
   champion: ChampionMetadata;
   predictions: Prediction[];
+  dataQuality?: DataQuality | null;
+  currentStatus?: Partial<Record<MunicipalityCode, CurrentStatus>>;
+}
+
+export interface PredictionHistoryItem extends PredictionSnapshot {
+  completedAt: string;
 }
 
 export interface MonthlyRunReceipt {

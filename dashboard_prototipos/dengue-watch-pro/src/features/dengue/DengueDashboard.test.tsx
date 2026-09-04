@@ -42,6 +42,7 @@ function dashboardState(overrides: Record<string, unknown> = {}) {
   return {
     latest: { isPending: false, isFetching: false, isError: false, error: null, refetch: vi.fn() },
     upload: { isPending: false, data: undefined, error: null, mutate: vi.fn() },
+    history: { data: [], isPending: false, isError: false },
     snapshot,
     predictions: snapshot.predictions,
     selectedCity: "68001",
@@ -125,7 +126,10 @@ describe("DengueDashboard states", () => {
     render(<DengueDashboard />);
     expect(screen.getByText("72%")).toBeInTheDocument();
     expect(screen.getAllByText("No disponible")).toHaveLength(2);
-    expect(screen.getAllByText("Información no disponible en esta versión.")).toHaveLength(3);
+    expect(
+      screen.getByText("Explicación local no disponible para esta predicción."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Información de calidad no disponible.")).toBeInTheDocument();
   });
 
   it("refreshes latest and preserves stale content on a refresh error", () => {
@@ -185,5 +189,57 @@ describe("DengueDashboard states", () => {
     expect(screen.getByText("0.61")).toBeInTheDocument();
     expect(screen.getByText("0.67")).toBeInTheDocument();
     expect(screen.getAllByText("Información no disponible").length).toBeGreaterThan(0);
+  });
+
+  it("renders real quality warnings, partial context, local SHAP and prediction history", () => {
+    const enriched = {
+      ...snapshot,
+      dataQuality: {
+        status: "complete",
+        lastObservedMonth: "2026-08",
+        epidemiologicalCompleteness: null,
+        climateCompleteness: null,
+        warnings: ["Completitud por grupo no definida."],
+      },
+      currentStatus: {
+        "68001": {
+          referenceMonth: "2026-08",
+          observedCases: null,
+          p25: 10,
+          p50: null,
+          p75: 20,
+          ratioToP75: null,
+          endemicZone: "2",
+        },
+      },
+      predictions: [
+        {
+          ...snapshot.predictions[0]!,
+          explanation: {
+            available: true,
+            method: "shap",
+            scope: "local",
+            topFeatures: [
+              { feature: "rain", value: 5, contribution: 0.4, group: null },
+              { feature: "temp", value: 28, contribution: -0.2, group: null },
+            ],
+          },
+        },
+      ],
+    };
+    vi.mocked(useDengueDashboard).mockReturnValue(
+      dashboardState({
+        snapshot: enriched,
+        predictions: enriched.predictions,
+        history: { data: [{ ...enriched, completedAt: "2026-09-03T12:00:00Z" }] },
+      }),
+    );
+    render(<DengueDashboard />);
+    expect(screen.getByText("SHAP local")).toBeInTheDocument();
+    expect(screen.getByText(/rain: \+0.4/)).toBeInTheDocument();
+    expect(screen.getByText(/temp: -0.2/)).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Completitud por grupo no definida");
+    expect(screen.getByText("Historial de predicciones")).toBeInTheDocument();
+    expect(screen.getAllByText("No disponible").length).toBeGreaterThan(0);
   });
 });

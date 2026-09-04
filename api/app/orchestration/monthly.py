@@ -15,6 +15,11 @@ from api.app.champion.service import (
 )
 from api.app.domain.errors import ContractError
 from api.app.domain.monthly_uploads import MonthlyUploadValidator, ValidatedMonthlyUpload
+from api.app.domain.enrichment import (
+    CurrentStatusSnapshot, DataQualitySnapshot, DecisionRuleSnapshot,
+    LocalExplanation, LocalExplanationProvider, UnavailableExplanationProvider,
+    build_current_status, build_quality,
+)
 from api.app.schemas.errors import ErrorCode
 from api.app.schemas.runs import RunStatus
 
@@ -40,6 +45,8 @@ class CandidatePrediction:
     risk_score: float | None
     label: str | None
     decision_threshold: float | None
+    decision_rule: DecisionRuleSnapshot | None = None
+    explanation: LocalExplanation = LocalExplanation(available=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +57,8 @@ class PredictionSnapshotCandidate:
     source_file_sha256: str
     champion: ChampionMetadata
     predictions: tuple[CandidatePrediction, ...]
+    data_quality: DataQualitySnapshot | None = None
+    current_status: tuple[tuple[str, CurrentStatusSnapshot], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +82,9 @@ class MonthlyRunResult:
 
 class ResultMapper:
     """Map only evidence present in HU002 and HU004 contracts."""
+
+    def __init__(self, explanation_provider: LocalExplanationProvider | None = None) -> None:
+        self._explanation_provider = explanation_provider or UnavailableExplanationProvider()
 
     def map(
         self,
@@ -98,6 +110,22 @@ class ResultMapper:
                 risk_score=item.risk_score,
                 label=item.label,
                 decision_threshold=item.decision_threshold,
+                decision_rule=DecisionRuleSnapshot(
+                    type="probability_threshold"
+                    if item.output_type == "probability" and item.decision_threshold is not None
+                    else None,
+                    probability_threshold=item.decision_threshold
+                    if item.output_type == "probability" else None,
+                    version=champion_output.metadata.decision_rule_version,
+                ),
+                explanation=getattr(
+                    self, "_explanation_provider", UnavailableExplanationProvider()
+                ).get_explanation(
+                    reference_month=validated_upload.reference_month,
+                    divipola=item.divipola,
+                    horizon=item.horizon,
+                    champion_metadata=champion_output.metadata,
+                ),
             )
             for item in champion_output.predictions
         )
@@ -110,6 +138,8 @@ class ResultMapper:
             source_file_sha256=validated_upload.metadata.sha256,
             champion=champion_output.metadata,
             predictions=predictions,
+            data_quality=build_quality(validated_upload),
+            current_status=tuple(build_current_status(validated_upload).items()),
         )
 
     @staticmethod

@@ -136,7 +136,7 @@ El backend debe bloquear la inferencia si faltan campos esenciales según el con
 | Campo | Tipo | Req./nullable | Semántica |
 |---|---|---|---|
 | `current_status.reference_month` | string | Sí / No | Corte `t`. |
-| `current_status.observed_cases` | integer/float | Sí / No | Casos observados de la serie target en `t`. |
+| `current_status.observed_cases` | integer/float | No / Sí | Casos observados de la serie target en `t`; nunca se reconstruye desde lags. |
 | `current_status.p25` | float | No / Sí | P25 del canal si está disponible. |
 | `current_status.p50` | float | No / Sí | P50 del canal si está disponible. |
 | `current_status.p75` | float | No / Sí | P75 del canal/umbral epidemiológico si aplica. |

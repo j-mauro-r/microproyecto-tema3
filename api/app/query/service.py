@@ -11,7 +11,9 @@ from api.app.domain.errors import ContractError
 from api.app.orchestration.monthly import MonthlyRunResult, PredictionSnapshotCandidate
 from api.app.schemas.errors import ErrorCode
 from api.app.schemas.read_models import (
-    ChampionRead, PaginationMeta, PredictionHistoryItem, PredictionHistoryResponse,
+    ChampionRead, CurrentStatusRead, DataQualityRead, DecisionRuleRead,
+    ExplanationFeatureRead, ExplanationRead, PaginationMeta,
+    PredictionHistoryItem, PredictionHistoryResponse,
     PredictionRead, PredictionSnapshotRead, PredictionSnapshotReadResponse,
     RunErrorRead, RunRead, RunReadResponse,
 )
@@ -141,11 +143,44 @@ def _snapshot(
             supported_horizons=list(champion.supported_horizons),
             feature_contract_version=champion.feature_contract_version,
             feature_contract_sha256=champion.feature_contract_sha256,
+            mlflow_run_id=champion.mlflow_run_id,
+            artifact_sha256=champion.artifact_sha256,
+            decision_rule_version=champion.decision_rule_version,
+            explanation_method=champion.explanation_method,
         ),
-        predictions=[PredictionRead(**{
-            field: getattr(item, field) for field in PredictionRead.model_fields
-        }) for item in snapshot.predictions
+        predictions=[_prediction(item) for item in snapshot.predictions
             if item.divipola in municipality_codes and item.horizon in horizons],
+        data_quality=DataQualityRead(
+            status=snapshot.data_quality.status,
+            last_observed_month=snapshot.data_quality.last_observed_month,
+            epidemiological_completeness=snapshot.data_quality.epidemiological_completeness,
+            climate_completeness=snapshot.data_quality.climate_completeness,
+            warnings=list(snapshot.data_quality.warnings),
+        ) if snapshot.data_quality else None,
+        current_status={code: CurrentStatusRead(**{
+            field: getattr(status, field) for field in CurrentStatusRead.model_fields
+        }) for code, status in snapshot.current_status if code in municipality_codes},
+    )
+
+
+def _prediction(item) -> PredictionRead:
+    rule = item.decision_rule
+    explanation = item.explanation
+    return PredictionRead(
+        divipola=item.divipola, municipality=item.municipality, horizon=item.horizon,
+        target_month=item.target_month, output_type=item.output_type,
+        probability=item.probability, expected_cases=item.expected_cases,
+        risk_score=item.risk_score, label=item.label,
+        decision_threshold=item.decision_threshold,
+        decision_rule=DecisionRuleRead(**{
+            field: getattr(rule, field) for field in DecisionRuleRead.model_fields
+        }) if rule else None,
+        explanation=ExplanationRead(
+            available=explanation.available, method=explanation.method, scope=explanation.scope,
+            top_features=[ExplanationFeatureRead(**{
+                field: getattr(feature, field) for field in ExplanationFeatureRead.model_fields
+            }) for feature in explanation.top_features],
+        ),
     )
 
 

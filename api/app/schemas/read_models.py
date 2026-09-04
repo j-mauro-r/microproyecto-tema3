@@ -41,6 +41,50 @@ class ChampionRead(StrictModel):
     supported_horizons: list[str]
     feature_contract_version: str
     feature_contract_sha256: str
+    mlflow_run_id: str | None = None
+    artifact_sha256: str | None = None
+    decision_rule_version: str | None = None
+    explanation_method: str | None = None
+
+
+class DataQualityRead(StrictModel):
+    status: str
+    last_observed_month: str
+    epidemiological_completeness: float | None = None
+    climate_completeness: float | None = None
+    warnings: list[str]
+
+
+class CurrentStatusRead(StrictModel):
+    reference_month: str
+    observed_cases: float | None = None
+    p25: float | None = None
+    p50: float | None = None
+    p75: float | None = None
+    ratio_to_p75: float | None = None
+    endemic_zone: str | None = None
+
+
+class DecisionRuleRead(StrictModel):
+    type: str | None = None
+    probability_threshold: float | None = None
+    target_month_p75: float | None = None
+    decision_threshold_cases: float | None = None
+    version: str | None = None
+
+
+class ExplanationFeatureRead(StrictModel):
+    feature: str
+    value: float | str | None = None
+    contribution: float
+    group: str | None = None
+
+
+class ExplanationRead(StrictModel):
+    available: bool
+    method: str | None = None
+    scope: str | None = None
+    top_features: list[ExplanationFeatureRead]
 
 
 class PredictionRead(StrictModel):
@@ -54,6 +98,8 @@ class PredictionRead(StrictModel):
     risk_score: float | None
     label: str | None
     decision_threshold: float | None
+    decision_rule: DecisionRuleRead | None = None
+    explanation: ExplanationRead = ExplanationRead(available=False, top_features=[])
 
 
 class PredictionSnapshotRead(StrictModel):
@@ -63,6 +109,8 @@ class PredictionSnapshotRead(StrictModel):
     source_file_sha256: str
     champion: ChampionRead
     predictions: list[PredictionRead]
+    data_quality: DataQualityRead | None = None
+    current_status: dict[str, CurrentStatusRead] = Field(default_factory=dict)
 
 
 class PredictionSnapshotReadResponse(StrictModel):
