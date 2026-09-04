@@ -1,7 +1,7 @@
 # BIOMAC — Contrato de API para dashboard e inferencia operacional
 
 **Estado:** contrato objetivo  
-**Versión del contrato:** `2.0.0`  
+**Versión del contrato:** `2.0.1`  
 **Base path:** `/api/v2`  
 **Documentos relacionados:** `arquitectura.md`, `implementacion.md`, `plan.md`, `diccionario-de-datos.md`
 
@@ -11,7 +11,7 @@
 
 La API cubre dos flujos distintos:
 
-1. **Actualización mensual:** un analista carga un archivo válido; el backend prepara la entrada, ejecuta el Champion ya aprobado, persiste el resultado y devuelve el estado del run.
+1. **Actualización mensual:** un analista carga un archivo válido; el backend prepara la entrada, ejecuta/consume el Champion ya aprobado, valida compatibilidad contractual, persiste el resultado y devuelve el estado del run.
 2. **Consulta:** abrir el dashboard o presionar `Refresh` recupera la última predicción persistida sin volver a ejecutar el Champion.
 
 El entrenamiento, tuning, comparación, selección y promoción del Champion están fuera de este contrato.
@@ -27,6 +27,8 @@ El entrenamiento, tuning, comparación, selección y promoción del Champion est
 - T+1/T+2 solo se exponen cuando están soportados por el Champion.
 - No se utilizan datos posteriores al `reference_month`.
 - No se usan mocks como fallback ante errores.
+- Un resultado Champion solo puede considerarse válido para un run si su `feature_contract_version` y `feature_contract_sha256` coinciden exactamente con el contrato efectivo del input validado/preparado para ese mismo run.
+- Un mismatch contractual nunca se degrada a warning ni puede terminar en `201 COMPLETED`.
 
 ## 3. Convenciones
 
@@ -68,7 +70,7 @@ Respuesta `200`:
 }
 ```
 
-`champion_ready=true` significa que el adapter puede acceder al Champion configurado y a su metadata mínima. No implica que se haya ejecutado una nueva predicción.
+`champion_ready=true` significa que el adapter puede acceder al Champion configurado y a su metadata mínima. No implica que se haya ejecutado una nueva predicción ni que una carga concreta ya haya superado el gate de feature contract.
 
 ---
 
@@ -94,17 +96,42 @@ RECEIVED
 → VALIDATING
 → PREPARING
 → INFERENCING
+→ CONTRACT_CHECK
 → MAPPING
 → READY_TO_PERSIST
 → PERSISTING
 → COMPLETED
 ```
 
+`CONTRACT_CHECK` puede implementarse internamente dentro de HU004/HU005 sin convertirse en un nuevo estado público obligatorio, pero su semántica es un gate requerido antes de mapping/persistencia.
+
 Ante fallo:
 
 ```text
 cualquier etapa → FAILED
 ```
+
+### 6.2.1 Gate obligatorio de feature contract
+
+Para el mismo run debe cumplirse:
+
+```text
+champion.feature_contract_version == input.feature_contract_version
+champion.feature_contract_sha256   == input.feature_contract_sha256
+```
+
+El `input` corresponde al contrato efectivo usado por HU002/HU003 para validar/preparar la carga. El `champion` corresponde a la metadata de la salida materializada o ejecutable recibida por HU004.
+
+Si alguno difiere:
+
+```text
+run → FAILED
+error.code → CHAMPION_INPUT_INVALID
+error.stage → PREPARING o INFERENCING según el punto de detección
+error.details.reason → feature_contract_mismatch
+```
+
+No se persiste un snapshot exitoso nuevo y `latest` conserva el último run `COMPLETED` anterior.
 
 ### 6.3 Respuesta exitosa `201`
 
@@ -129,7 +156,8 @@ cualquier etapa → FAILED
       "mlflow_run_id": "optional-run-id",
       "output_type": "probability",
       "supported_horizons": ["T+1", "T+2"],
-      "feature_contract_version": "1.0.0"
+      "feature_contract_version": "1.0.0",
+      "feature_contract_sha256": "example-feature-contract-sha256"
     }
   },
   "prediction_snapshot": {
@@ -142,12 +170,7 @@ cualquier etapa → FAILED
 
 `prediction_snapshot.forecasts` usa el mismo schema descrito en la sección 10.
 
-**Contrato transitorio HU006.** Mientras HU007/HU009 no suministren los
-enriquecimientos de `forecasts`, el `201` de HU006 devuelve únicamente evidencia
-real: metadata mínima del run/Champion y `prediction_snapshot.predictions` con las
-filas producidas por `PredictionSnapshotCandidate`. No se fabrican data quality,
-historia, explicación, canal endémico ni thresholds ausentes. HU007 deberá
-normalizar la lectura al contrato final de la sección 10.
+**Contrato transitorio HU006.** Mientras HU007/HU009 no suministren los enrichments de `forecasts`, el `201` de HU006 devuelve únicamente evidencia real: metadata mínima del run/Champion y `prediction_snapshot.predictions` con las filas producidas por `PredictionSnapshotCandidate`. No se fabrican data quality, historia, explicación, canal endémico ni thresholds ausentes. HU007 deberá normalizar la lectura al contrato final de la sección 10.
 
 ### 6.4 Idempotencia
 
@@ -158,6 +181,8 @@ reference_month + source_file.sha256 + champion.version
 ```
 
 Una repetición idéntica debe recuperar/reconocer el resultado lógico existente o responder de forma consistente. Un archivo diferente para un periodo ya procesado no puede sobrescribir silenciosamente un resultado anterior.
+
+La idempotencia no reemplaza la validación contractual: un run con feature contract incompatible debe fallar incluso si `reference_month` y Champion version son conocidos.
 
 ---
 
@@ -196,8 +221,7 @@ Para `COMPLETED`, `stage` puede ser `null` o `COMPLETED`. Para `FAILED`, `error`
 | `municipality_codes` | string repetible/csv | No | `68001`,`76001`; default ambas |
 | `horizons` | string repetible/csv | No | `T+1`,`T+2`; default ambas |
 
-`history_months` e `include_explanations` quedan diferidos a HU009: HU007 no los
-acepta ni fabrica historia o explicaciones que no estén persistidas.
+`history_months` e `include_explanations` quedan diferidos a HU009: HU007 no los acepta ni fabrica historia o explicaciones que no estén persistidas.
 
 ### 8.2 Semántica
 
@@ -208,10 +232,7 @@ Devuelve el último snapshot cuyo run terminó `COMPLETED`.
 - botón `Refresh`;
 - actualización automática posterior a un upload exitoso.
 
-La respuesta HU007 usa el contrato mínimo real documentado en 6.3:
-`prediction_snapshot` contiene run, timestamps, corte, hash fuente, Champion y
-`predictions` planas con outputs nullable preservados. El schema enriquecido de
-la sección 10 es el objetivo compatible hacia adelante de HU009.
+La respuesta HU007 usa el contrato mínimo real documentado en 6.3: `prediction_snapshot` contiene run, timestamps, corte, hash fuente, Champion y `predictions` planas con outputs nullable preservados. El schema enriquecido de la sección 10 es el objetivo compatible hacia adelante de HU009.
 
 ---
 
@@ -227,9 +248,7 @@ Filtros mínimos:
 
 Devuelve snapshots persistidos, no backtesting reconstruido bajo demanda.
 
-Orden: `reference_month DESC`, `completed_at DESC`, `run_id DESC`. `limit` vale
-20 por defecto (1..100) y `offset` vale 0 por defecto. Una colección vacía
-responde `200` con `items=[]`; `latest` vacío responde `404 PREDICTION_NOT_FOUND`.
+Orden: `reference_month DESC`, `completed_at DESC`, `run_id DESC`. `limit` vale 20 por defecto (1..100) y `offset` vale 0 por defecto. Una colección vacía responde `200` con `items=[]`; `latest` vacío responde `404 PREDICTION_NOT_FOUND`.
 
 ---
 
@@ -254,7 +273,8 @@ responde `200` con `items=[]`; `latest` vacío responde `404 PREDICTION_NOT_FOUN
     "mlflow_run_id": "optional-run-id",
     "output_type": "probability",
     "supported_horizons": ["T+1", "T+2"],
-    "feature_contract_version": "1.0.0"
+    "feature_contract_version": "1.0.0",
+    "feature_contract_sha256": "example-feature-contract-sha256"
   },
   "forecasts": [
     {
@@ -322,16 +342,15 @@ responde `200` con `items=[]`; `latest` vacío responde `404 PREDICTION_NOT_FOUN
 
 Los valores anteriores son únicamente ejemplos de estructura.
 
-HU009 expone estos enrichments de forma aditiva. En el entorno local vigente,
-`data_quality` y el contexto contractual `p25/p75/zona_canal` están disponibles;
-`observed_cases`, `p50` y `ratio_to_p75` permanecen nulos. La explicación queda
-`available=false` mientras no exista un parquet SHAP configurado y compatible.
+HU009 expone estos enrichments de forma aditiva. En el entorno local vigente, `data_quality` y el contexto contractual `p25/p75/zona_canal` están disponibles; `observed_cases`, `p50` y `ratio_to_p75` permanecen nulos. La explicación queda `available=false` mientras no exista un parquet SHAP configurado y compatible.
 
 ## 11. Reglas de campos críticos
 
 ### `champion`
 
 Describe el artefacto aprobado utilizado para el run. La API **lee** esta metadata; no entrena ni promueve el modelo.
+
+`feature_contract_version` y `feature_contract_sha256` identifican el contrato de entrada bajo el cual el Champion declara haber producido la salida. Ambos deben coincidir con el contrato efectivo del input de ese run antes de aceptar el resultado.
 
 ### `model_output`
 
@@ -394,6 +413,22 @@ Códigos mínimos:
 - `500 PERSISTENCE_FAILED`
 - `500 INTERNAL_ERROR`
 
+Para mismatch de feature contract se reutiliza `422 CHAMPION_INPUT_INVALID` con:
+
+```json
+{
+  "details": {
+    "reason": "feature_contract_mismatch",
+    "expected_version": "...",
+    "received_version": "...",
+    "expected_sha256": "...",
+    "received_sha256": "..."
+  }
+}
+```
+
+Los nombres `expected/received` deben documentarse de forma consistente en implementación/tests; el principio obligatorio es exponer la incompatibilidad sin stacktrace ni secretos.
+
 Una respuesta de error no activa mocks.
 
 ## 13. Seguridad mínima
@@ -414,14 +449,11 @@ Una respuesta de error no activa mocks.
 1. El frontend consume `/predictions/latest` al abrir y refrescar.
 2. El frontend llama `/monthly-runs` solo por acción explícita de actualización.
 3. Tras `COMPLETED`, la UI vuelve a consultar `latest` o utiliza el snapshot retornado y luego sincroniza con `latest`.
-4. Ante `FAILED`, la UI conserva el último snapshot exitoso y muestra el error de la actualización.
+4. Ante `FAILED`, incluida incompatibilidad de feature contract, la UI conserva el último snapshot exitoso y muestra el error de la actualización.
 5. La UI se adapta a `output_type`.
 6. Campos `null` se ocultan o muestran como no disponibles; nunca se reemplazan por mocks.
 
-HU008 implementa esta compatibilidad con `HttpDengueRepository`. La configuración
-del navegador es `VITE_BIOMAC_API_BASE_URL` (incluye `/api/v2`, sin slash final).
-El cliente no establece `Content-Type` del multipart y usa el error estable
-`PREDICTION_NOT_FOUND` para distinguir el estado empty de una falla técnica.
+HU008 implementa esta compatibilidad con `HttpDengueRepository`. La configuración del navegador es `VITE_BIOMAC_API_BASE_URL` (incluye `/api/v2`, sin slash final). El cliente no establece `Content-Type` del multipart y usa el error estable `PREDICTION_NOT_FOUND` para distinguir el estado empty de una falla técnica.
 
 ## 15. Frontera con el Champion
 
@@ -429,12 +461,14 @@ El backend requiere del equipo de modelado:
 - artefacto ejecutable o salida materializada equivalente;
 - nombre/versión;
 - horizontes soportados;
-- contrato de features/entrada;
+- contrato de features/entrada (`feature_contract_version` + `feature_contract_sha256`);
 - tipo de salida;
 - regla/threshold;
 - método de explicación si existe.
 
 Si falta alguno de estos elementos, la API debe reportar la dependencia; no debe inferirla por conveniencia.
+
+La existencia de metadata no basta: el backend debe compararla con el contrato efectivo del input del run.
 
 ## 16. Fuente de verdad
 
@@ -458,6 +492,7 @@ Para el MVP, el provider activo será:
 ```text
 ChampionResult PR12
 → MaterializedOutputAdapter
+→ feature contract gate
 → ChampionOutput
 ```
 
@@ -466,6 +501,7 @@ En una evolución futura podrá ser:
 ```text
 ChampionInput
 → ExecutableChampionAdapter
+→ feature contract gate
 → ChampionOutput
 ```
 
@@ -473,13 +509,28 @@ Los endpoints, schemas HTTP, `PredictionSnapshot`, persistencia y frontend deben
 
 ### Regla contractual
 
-`POST /monthly-runs` significa **obtener una nueva salida Champion válida para el run**, no necesariamente deserializar/ejecutar un modelo dentro del proceso FastAPI. El detalle pertenece a HU004.
+`POST /monthly-runs` significa **obtener una nueva salida Champion válida y contractualmente compatible para el run**, no necesariamente deserializar/ejecutar un modelo dentro del proceso FastAPI. El detalle pertenece a HU004.
 
-La capa de orquestación de la API solo puede invocar
-`ChampionService.produce(ChampionOperationalContext)` y recibir `ChampionOutput`. No puede contener
-branching del tipo `if materialized` / `if executable`, ni importar adapters concretos,
-JSON PR #12, XGBoost, pickle o paquetes de modelo.
+La capa de orquestación de la API solo puede invocar `ChampionService.produce(ChampionOperationalContext)` y recibir `ChampionOutput`. No puede contener branching del tipo `if materialized` / `if executable`, ni importar adapters concretos, JSON PR #12, XGBoost, pickle o paquetes de modelo.
 
 ### Sin fallback silencioso
 
 El provider HU004 activo se define por configuración/composición. Si falla, el run falla con el error contractual correspondiente. La API no cambia automáticamente de provider porque hacerlo comprometería trazabilidad y reproducibilidad.
+
+---
+
+## 18. Hallazgo HU010 que origina la versión 2.0.1
+
+La prueba HTTP real de PR #33 demostró que el flujo podía devolver `201 COMPLETED` con cuatro predicciones aunque los contratos declarados fueran distintos:
+
+```text
+Champion JSON
+feature_contract_version = pr12-f5a2d39
+feature_contract_sha256   = 3af245ede70851d1616439d80441e2ad6f5d3f6465b9798d6b67fed3adb3e3dc
+
+CSV/API vigente
+feature_contract_version = pr12-74e385c3
+feature_contract_sha256   = 786ef0b5be829efe763e6c3eea385f90660e5bc191bf1469e02885d02e95e5ba
+```
+
+La respuesta HTTP y la persistencia fueron técnicamente correctas, pero no demuestran que esas predicciones correspondan al mismo contrato de entrada. Esta versión contractual introduce el gate obligatorio descrito en 6.2.1 sin autorizar la edición artificial de hashes/metadata.

@@ -1,9 +1,9 @@
 # BIOMAC — Diccionario de datos para API y dashboard
 
 **Estado:** especificación canónica de datos  
-**Versión:** `2.0.0`  
+**Versión:** `2.0.1`  
 **Ámbito:** carga mensual → inferencia con Champion → persistencia → dashboard  
-**Documentos relacionados:** `arquitectura.md`, `implementacion.md`, `plan.md` v2.0.0 y `API-sign.md` v2.0.0
+**Documentos relacionados:** `arquitectura.md`, `implementacion.md`, `plan.md` v2.0.0 y `API-sign.md` v2.0.1
 
 ## 1. Principios
 
@@ -13,6 +13,8 @@
 - El frontend no calcula features, canal, clase, probability, threshold ni SHAP.
 - La carga mensual dispara una nueva inferencia; `Refresh` solo consulta el último snapshot exitoso.
 - `null` significa dato contemplado pero no disponible/no aplicable; nunca se reemplaza silenciosamente por mocks.
+- `feature_contract_version` y `feature_contract_sha256` son datos de trazabilidad y compatibilidad obligatorios, no etiquetas informativas.
+- Un resultado Champion no puede asociarse a un run exitoso si esos dos valores difieren del contrato efectivo del input usado por el mismo run.
 
 ## 2. Grupos de datos
 
@@ -82,7 +84,8 @@ Un run `FAILED` no puede convertirse en la fuente de `predictions/latest`.
 | `champion.artifact_id` | string | No / Sí | Identificador/ruta lógica del artefacto. | Configuración |
 | `champion.output_type` | enum/string | Sí / No | Ej. `probability`, `expected_count`, `score`. | Contrato Champion |
 | `champion.supported_horizons[]` | array[enum] | Sí / No | `T+1`, `T+2` realmente soportados. | Contrato Champion |
-| `champion.feature_contract_version` | string | Sí / No | Versión del contrato de entrada/features. | Contrato Champion |
+| `champion.feature_contract_version` | string | Sí / No | Versión del contrato de entrada/features bajo el cual el Champion declara haber producido la salida. | Contrato Champion |
+| `champion.feature_contract_sha256` | string SHA-256 | Sí / No | Hash canónico del contrato de features declarado por el Champion. | Contrato Champion |
 | `champion.decision_rule_version` | string | No / Sí | Versión de threshold/regla. | Contrato Champion |
 | `champion.explanation_method` | string | No / Sí | Método local válido si existe. | Contrato Champion |
 
@@ -90,22 +93,30 @@ Un run `FAILED` no puede convertirse en la fuente de `predictions/latest`.
 
 Esta metadata se **consume**; no se produce mediante entrenamiento dentro del alcance Dashboard/API.
 
+Para un run exitoso debe cumplirse:
+
+```text
+champion.feature_contract_version == input.feature_contract_version
+champion.feature_contract_sha256   == input.feature_contract_sha256
+```
+
 ---
 
 ## 6. Entrada de inferencia y calidad
 
 | Campo | Tipo | Req./nullable | Semántica |
 |---|---|---|---|
-| `input_contract_version` | string | Sí / No | Versión del schema que espera el Champion. |
-| `feature_names[]` | array[string] | Sí / No | Features requeridas por el Champion. |
-| `feature_snapshot_hash` | string | No / Sí | Hash de la entrada preparada para trazabilidad. |
+| `input.feature_contract_version` | string | Sí / No | Versión efectiva del contrato usado por HU002/HU003 para validar/preparar el input del run. |
+| `input.feature_contract_sha256` | string SHA-256 | Sí / No | Hash canónico del contrato efectivo del input. |
+| `feature_names[]` | array[string] | Sí / No | Features requeridas por el Champion, en orden contractual. |
+| `feature_snapshot_hash` | string | No / Sí | Hash de la entrada preparada para trazabilidad adicional. |
 | `data_quality.status` | enum | Sí / No | `complete`, `partial`, `degraded`. |
 | `data_quality.last_observed_month` | string | Sí / No | Último mes epidemiológico realmente utilizado. |
 | `data_quality.epidemiological_completeness` | float 0..1 | No / Sí | Completitud epidemiológica. |
 | `data_quality.climate_completeness` | float 0..1 | No / Sí | Completitud climática si aplica. |
 | `data_quality.warnings[]` | array[string] | Sí / No | Advertencias relevantes. |
 
-El backend debe bloquear la inferencia si faltan campos esenciales según el contrato del Champion.
+El backend debe bloquear la inferencia/aceptación del output si faltan campos esenciales según el contrato del Champion o si existe mismatch entre contrato de input y Champion.
 
 ---
 
@@ -221,12 +232,12 @@ Un `PredictionSnapshot` debe conservar como mínimo:
 | `generated_at` | Sí | Momento de inferencia. |
 | `reference_month` | Sí | Corte epidemiológico. |
 | `source_file_sha256` | Sí | Linaje de entrada. |
-| `champion` | Sí | Modelo exacto utilizado. |
+| `champion` | Sí | Modelo exacto utilizado, incluyendo feature contract version/hash. |
 | `target_definition` | Sí | Semántica de target. |
 | `forecasts[]` | Sí | Resultado por municipio. |
 | `data_quality` | Sí | Calidad/advertencias relevantes. |
 
-Solo snapshots asociados a runs `COMPLETED` pueden ser candidatos a `latest`.
+Solo snapshots asociados a runs `COMPLETED` y que hayan superado compatibilidad contractual pueden ser candidatos a `latest`.
 
 ---
 
@@ -250,6 +261,7 @@ Cada registro histórico debe permitir reconstruir:
 - qué se predijo;
 - para qué ciudad/horizonte/mes;
 - qué Champion se usó;
+- con qué feature contract;
 - con qué archivo/corte;
 - cuándo se generó;
 - qué output/regla produjo la clase.
@@ -266,12 +278,22 @@ Cuando exista observación posterior, podrá agregarse `observed_label/outcome_t
 | `INVALID_UPLOAD` | validación | Archivo inválido. |
 | `PERIOD_CONFLICT` | validación | Conflicto con periodo ya procesado. |
 | `INSUFFICIENT_DATA` | preparación | Datos insuficientes. |
-| `CHAMPION_INPUT_INVALID` | preparación | Input incompatible con contrato. |
+| `CHAMPION_INPUT_INVALID` | preparación/inferencia | Input incompatible con contrato, incluido `feature_contract_mismatch`. |
 | `CHAMPION_NOT_READY` | inferencia | Artefacto/adapter no disponible. |
 | `PREPARATION_FAILED` | preparación | Fallo técnico preparando inputs. |
-| `INFERENCE_FAILED` | inferencia | Fallo al ejecutar Champion. |
+| `INFERENCE_FAILED` | inferencia | Fallo técnico al ejecutar/obtener Champion. |
 | `PERSISTENCE_FAILED` | persistencia | No se pudo guardar snapshot/run. |
 | `PREDICTION_NOT_FOUND` | consulta | No existe snapshot exitoso. |
+
+Para `feature_contract_mismatch`, `details` debe poder registrar de forma saneada:
+
+```text
+reason
+expected_version
+received_version
+expected_sha256
+received_sha256
+```
 
 Todo error debe poder asociarse con `request_id` y, cuando ya exista, `run_id`.
 
@@ -290,7 +312,7 @@ Todo error debe poder asociarse con `request_id` y, cuando ya exista, `run_id`.
 | F13 Histórico | `history[]` |
 | F17-F19 Explicabilidad | `explanation.*` |
 | F23/F24 Historial | snapshots persistidos |
-| F26 Trazabilidad | `run_id`, Champion, hash fuente, timestamps |
+| F26 Trazabilidad | `run_id`, Champion, feature contract, hash fuente, timestamps |
 | F29 Estados | run `status/stage/error` |
 | F30 Última inferencia | `generated_at/completed_at` |
 | F34 Actualizar datos | `file`, `reference_month` |
@@ -300,21 +322,22 @@ Todo error debe poder asociarse con `request_id` y, cuando ya exista, `run_id`.
 
 ---
 
-## 19. Brechas/dependencias antes de implementar
+## 19. Brechas/dependencias antes de cerrar HU010
 
 La capa de integración necesita confirmar con el equipo de modelado:
 
 1. artefacto Champion o formato de salidas materializadas;
 2. versión/nombre del Champion;
 3. contrato exacto de entrada/features;
-4. transformaciones reutilizables para inferencia;
-5. T+1/T+2 realmente soportados;
-6. tipo de output por horizonte;
-7. threshold/regla de decisión;
-8. explicación local disponible o no;
-9. metadata mínima de trazabilidad.
+4. `feature_contract_version` canónico;
+5. `feature_contract_sha256` canónico;
+6. T+1/T+2 realmente soportados;
+7. tipo de output por horizonte;
+8. threshold/regla de decisión;
+9. explicación local disponible o no;
+10. metadata mínima de trazabilidad.
 
-No deben completarse estas brechas mediante suposiciones del frontend/backend.
+No deben completarse estas brechas mediante suposiciones del frontend/backend ni reescribiendo metadata para forzar compatibilidad.
 
 ## 20. Gobierno
 
@@ -328,3 +351,21 @@ Un cambio semántico debe revisar simultáneamente:
 7. pruebas de contrato.
 
 El entrenamiento del modelo no forma parte de este gobierno documental; solo el contrato con el Champion y sus salidas.
+
+---
+
+## 21. Hallazgo PR #33 — contratos observados
+
+Durante el HTTP E2E real se observaron simultáneamente:
+
+```text
+Champion JSON
+feature_contract_version = pr12-f5a2d39
+feature_contract_sha256   = 3af245ede70851d1616439d80441e2ad6f5d3f6465b9798d6b67fed3adb3e3dc
+
+Input CSV/API
+feature_contract_version = pr12-74e385c3
+feature_contract_sha256   = 786ef0b5be829efe763e6c3eea385f90660e5bc191bf1469e02885d02e95e5ba
+```
+
+Estos valores se documentan como **evidencia de incompatibilidad**, no como dos contratos válidos intercambiables. El sistema debe tener un único contrato efectivo por run y bloquear cualquier combinación distinta.

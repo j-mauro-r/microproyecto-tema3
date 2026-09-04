@@ -68,6 +68,7 @@ function Value({ label, value }: { label: string; value: string | number | null 
 export function DengueDashboard() {
   const { latest, history, upload, snapshot, predictions, selectedCity, setSelectedCity, refresh } =
     useDengueDashboard();
+
   const empty =
     latest.error instanceof BiomacApiError && latest.error.code === "PREDICTION_NOT_FOUND";
 
@@ -81,6 +82,7 @@ export function DengueDashboard() {
       </main>
     );
   }
+
   if (!snapshot) {
     return (
       <main className="mx-auto flex min-h-screen max-w-2xl items-center px-5">
