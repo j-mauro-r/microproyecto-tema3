@@ -5,16 +5,15 @@
 - **ID canónico:** HU004
 - **Alias en backlog:** HU-INT-004
 - **Nombre:** Adapter del Champion
-- **Estado:** `[COMPLETADA — DESARROLLO]`
+- **Estado:** `[AJUSTE DE INTEGRACIÓN PENDIENTE — FEATURE CONTRACT GATE]`
 - **Deployment AWS:** `[PENDIENTE]`
-- **Integración Champion real:** `[PARCIAL — PR12 ENTREGA SALIDA MATERIALIZABLE]`
+- **Integración Champion real:** `[PARCIAL — HTTP FUNCIONA, COMPATIBILIDAD CONTRACTUAL NO CERRADA]`
 - **Prioridad:** ALTA
 - **Tipo:** Backend / Integración ML / Serving
 - **Metodología:** DWP (Deep Work Plan)
 - **Dependencia previa:** HU003 — Adaptación mínima al contrato del Champion `[COMPLETADA]`
 - **Habilita:** HU005 — Orquestación del run mensual (`HU-INT-005`)
-- **Gate posterior:** HU005 puede iniciar al recibir `ChampionService`, al que entrega
-  únicamente `ChampionOperationalContext`. La selección del provider queda dentro de HU004.
+- **Gate posterior:** HU005 puede iniciar al recibir `ChampionService`, pero ningún resultado puede alcanzar mapping/persistencia si el contrato de features declarado por el Champion no coincide exactamente con el contrato efectivo del input del run.
 
 ### Fuentes de verdad
 
@@ -125,7 +124,9 @@ Al finalizar HU004 deberá existir una capa que:
 17. mantenga DVC/S3/MLflow fuera de cada request;
 18. no implemente entrenamiento ni preparación de datos;
 19. no persista todavía `PredictionSnapshot`;
-20. deje un handoff estable para HU005.
+20. deje un handoff estable para HU005;
+21. compare obligatoriamente `feature_contract_version` y `feature_contract_sha256` del Champion con los del input/contexto operacional del mismo run;
+22. rechace de forma controlada cualquier mismatch antes de mapping/persistencia y sin fabricar `COMPLETED`.
 
 ---
 
@@ -146,7 +147,7 @@ HU004 debe garantizar que el backend pueda obtener los datos ML necesarios para 
 | `model_version` | nivel Champion | trazabilidad |
 | `reference_month` | nivel Champion | corte de información |
 | `output_type` | nivel Champion | interpretación correcta |
-| feature contract version/hash | nivel Champion | compatibilidad técnica |
+| feature contract version/hash | nivel Champion | compatibilidad técnica y gate del run |
 
 ### Información complementaria de PR #12
 
@@ -229,15 +230,9 @@ class ChampionOutput:
 
 ### 6.4 Contrato materializado PR #12
 
-`MaterializedChampionResult` y `MaterializedChampionPrediction` representan de forma
-inmutable y estricta el contrato de `dashboard_prototipos/JSON-dashboard.md` suministrado
-por modelado. `MaterializedOutputAdapter.from_result(...)` acepta ese objeto interno o
-un `Mapping` equivalente y produce `ChampionOutput` sin ejecutar modelos.
+`MaterializedChampionResult` y `MaterializedChampionPrediction` representan de forma inmutable y estricta el contrato de `dashboard_prototipos/JSON-dashboard.md` suministrado por modelado. `MaterializedOutputAdapter.from_result(...)` acepta ese objeto interno o un `Mapping` equivalente y produce `ChampionOutput` sin ejecutar modelos.
 
-Para el contrato probabilístico MVP exige exactamente las claves `68001/T+1`,
-`68001/T+2`, `76001/T+1`, `76001/T+2`, valida meses, rangos finitos, nombres de
-municipio y la regla `probability >= threshold → EXCESO`. Cada
-`prediction.threshold` se mapea a su propio `ChampionPrediction.decision_threshold`.
+Para el contrato probabilístico MVP exige exactamente las claves `68001/T+1`, `68001/T+2`, `76001/T+1`, `76001/T+2`, valida meses, rangos finitos, nombres de municipio y la regla `probability >= threshold → EXCESO`. Cada `prediction.threshold` se mapea a su propio `ChampionPrediction.decision_threshold`.
 
 ---
 
@@ -290,11 +285,9 @@ class ChampionService(Protocol):
     def produce(self, context: ChampionOperationalContext) -> ChampionOutput: ...
 ```
 
-`ChampionOperationalContext` solo contiene datos operacionales: periodo, hash fuente y,
-cuando existe, la carga validada de HU002. No expone `ChampionInput` ni
-`MaterializedChampionResult`. `build_champion_service` selecciona una estrategia y sus
-resolvers inyectados. Dentro de HU004, `MaterializedChampionResultProvider` obtiene el
-resultado PR12 o `ChampionInputProvider` delega la preparación a HU003. No hay fallback.
+`ChampionOperationalContext` solo contiene datos operacionales: periodo, hash fuente y, cuando existe, la carga validada de HU002. No expone `ChampionInput` ni `MaterializedChampionResult`. `build_champion_service` selecciona una estrategia y sus resolvers inyectados. Dentro de HU004, `MaterializedChampionResultProvider` obtiene el resultado PR12 o `ChampionInputProvider` delega la preparación a HU003. No hay fallback.
+
+Para ambos modos, el contexto debe permitir recuperar el contrato efectivo del input (`feature_contract_version` + `feature_contract_sha256`) o construirlo mediante HU003. La estrategia activa no puede aceptar un `ChampionOutput` hasta comprobar igualdad exacta con la metadata del Champion.
 
 ### 8.1 Puerto estable
 
@@ -377,6 +370,17 @@ Cuando `supported_horizons == ("T+1", "T+2")`, el conjunto exacto esperado es:
 
 No depender del orden del array.
 
+### Gate de feature contract
+
+Antes de devolver `ChampionOutput` como válido para un run debe cumplirse:
+
+```text
+champion.feature_contract_version == input.feature_contract_version
+champion.feature_contract_sha256   == input.feature_contract_sha256
+```
+
+La comparación aplica tanto a Modo A como a Modo B. En el modo materializado, no basta con que el JSON sea internamente válido: debe demostrarse que fue generado con el mismo contrato con el que la API validó/preparó la entrada operacional.
+
 ---
 
 ## 10. Threshold por horizonte — decisión obligatoria
@@ -426,9 +430,11 @@ Antes de entregar `ChampionOutput`, HU004 debe validar:
 11. `feature_contract_version` no vacío;
 12. `feature_contract_sha256` no vacío;
 13. `model_name/model_version` no vacíos;
-14. ausencia de campos ML inventados.
+14. ausencia de campos ML inventados;
+15. igualdad exacta entre `feature_contract_version` del Champion y del input/contexto del run;
+16. igualdad exacta entre `feature_contract_sha256` del Champion y del input/contexto del run.
 
-Error por salida materializada inválida debe mapearse a un error estable de inferencia/contrato, sin filtrar paths o stack traces.
+Error por salida materializada inválida o mismatch contractual debe producir un run fallido antes de persistencia exitosa.
 
 ---
 
@@ -440,15 +446,15 @@ Usar cuando el provider/artefacto necesario para obtener la salida no esté disp
 
 ### `CHAMPION_INPUT_INVALID`
 
-Usar para incompatibilidades de `ChampionInput` en el camino de ejecución directa.
+Usar para incompatibilidades del contrato de entrada, incluyendo mismatch de `feature_contract_version` o `feature_contract_sha256` entre el input efectivo del run y la metadata del Champion. El detalle debe identificar `reason=feature_contract_mismatch` y puede incluir valores esperados/recibidos sin exponer secretos.
 
 ### `INFERENCE_FAILED`
 
-Usar cuando la ejecución directa o la obtención de la salida Champion falla.
+Usar cuando la ejecución directa o la obtención de la salida Champion falla por causa técnica no contractual.
 
 ### Salida materializada inválida
 
-Si `ChampionResult` existe pero viola el contrato, HU004 debe fallar de forma controlada. Puede reutilizar `INFERENCE_FAILED` en la etapa `INFERENCING` si no existe todavía un código público más específico. No crear un nuevo código HTTP sin actualizar primero `API-sign.md`.
+Si `ChampionResult` existe pero viola el contrato, HU004 debe fallar de forma controlada. Un mismatch de feature contract no debe degradarse a warning ni permitirse llegar a `COMPLETED`.
 
 ---
 
@@ -473,7 +479,7 @@ HU004 no evalúa ni modifica:
 - generación de SHAP;
 - ResultMapper completo de HU005+.
 
-HU004 acepta como verdad de integración las salidas que PR #12 declara y valida; no audita cómo fueron obtenidas.
+HU004 acepta como verdad de integración las salidas que PR #12 declara solo cuando además son compatibles con el contrato efectivo del input del run.
 
 ---
 
@@ -549,12 +555,19 @@ Pendiente Mauricio: materializar el mecanismo acordado y ejecutar smoke test rea
 
 ### T17 — Handoff HU005
 
-HU005 debe invocar exclusivamente `ChampionService.produce(context)` y recibir
-`ChampionOutput`, sin distinguir si vino de ejecución directa o de salida PR #12.
+HU005 debe invocar exclusivamente `ChampionService.produce(context)` y recibir `ChampionOutput`, sin distinguir si vino de ejecución directa o de salida PR #12.
+
+### T18 — Implementar gate de feature contract
+
+Comparar versión y SHA-256 del contrato efectivo del input contra la metadata del Champion en ambos providers. Ante mismatch, fallar de forma controlada antes de mapping/persistencia.
+
+### T19 — Tests del gate
+
+Cubrir al menos: match exacto PASS; versión distinta FAIL; hash distinto FAIL; ambos distintos FAIL; latest previo preservado; ningún snapshot nuevo `COMPLETED`.
 
 ---
 
-## 15. Criterios de aceptación actualizados CA01–CA22
+## 15. Criterios de aceptación actualizados CA01–CA26
 
 - **CA01:** suite baseline permanece verde.
 - **CA02:** `ChampionAdapter` sigue desacoplado de frameworks ML.
@@ -578,15 +591,19 @@ HU005 debe invocar exclusivamente `ChampionService.produce(context)` y recibir
 - **CA20:** tests funcionan sin AWS/red.
 - **CA21:** `ChampionService`, `ChampionOperationalContext` y `ChampionOutput` son la frontera de HU005.
 - **CA22:** ambos providers son intercambiables para el mismo consumer y no existe fallback.
+- **CA23:** match exacto de feature contract permite continuar.
+- **CA24:** mismatch de versión impide `COMPLETED`.
+- **CA25:** mismatch de SHA-256 impide `COMPLETED`.
+- **CA26:** un mismatch conserva latest previo y no persiste un snapshot exitoso nuevo.
 
 ---
 
-## 16. Autovalidaciones actualizadas AV01–AV20
+## 16. Autovalidaciones actualizadas AV01–AV24
 
 - **AV01:** baseline API PASS.
 - **AV02:** imports de puerto sin ML frameworks.
 - **AV03:** contratos inmutables.
-- **AV04:** fixture PR #12 válido se acepta.
+- **AV04:** fixture PR #12 válido se acepta estructuralmente.
 - **AV05:** thresholds T+1/T+2 distintos se preservan.
 - **AV06:** cuatro claves municipio/horizonte exactas.
 - **AV07:** array desordenado produce output ordenado/estable o inequívoco.
@@ -602,22 +619,17 @@ HU005 debe invocar exclusivamente `ChampionService.produce(context)` y recibir
 - **AV17:** camino ejecutable conserva load-once.
 - **AV18:** suite API completa PASS.
 - **AV19:** compileall/pip check PASS.
-- **AV20:** diff no adelanta HU005+ ni infraestructura.
+- **AV20:** diff no adelanta infraestructura.
+- **AV21:** contrato idéntico PASS.
+- **AV22:** versión distinta produce `CHAMPION_INPUT_INVALID`/FAILED.
+- **AV23:** SHA distinto produce `CHAMPION_INPUT_INVALID`/FAILED.
+- **AV24:** latest previo y conteos SQLite permanecen consistentes tras mismatch.
 
 ---
 
 ## 17. Definición de terminado — desarrollo
 
-La parte Codex de HU004 queda `[COMPLETADA — DESARROLLO]` porque:
-
-```text
-PR12 ChampionResult
-→ MaterializedOutputAdapter
-→ ChampionOutput
-```
-
-está implementado y probado, y el camino ejecutable existente ya usa threshold por
-predicción en lugar de asumir uno global.
+HU004 estuvo implementada para adaptación estructural PR12, pero el hallazgo HU010 reabre un ajuste contractual específico. HU004 vuelve a `[COMPLETADA — DESARROLLO]` solo cuando el gate de feature contract esté implementado y probado para la estrategia materializada y la ejecutable equivalente.
 
 ---
 
@@ -635,7 +647,7 @@ A) ChampionInput → Champion ejecutable → ChampionOutput
 B) ChampionResult PR12 real → MaterializedOutputAdapter → ChampionOutput
 ```
 
-En ambos casos se debe demostrar Bucaramanga/Cali × T+1/T+2 con probability, threshold y label reales cuando esos campos formen parte del contrato.
+En ambos casos se debe demostrar Bucaramanga/Cali × T+1/T+2 con probability, threshold y label reales cuando esos campos formen parte del contrato, y feature contract idéntico al input operacional.
 
 ---
 
@@ -660,7 +672,7 @@ PredictionSnapshot
 respuesta API
 ```
 
-Así, PR #12 puede cambiar su mecanismo interno mientras conserve el contrato de salida compatible con HU004.
+El `ChampionOutput` recibido debe haber superado previamente el gate de compatibilidad contractual de HU004.
 
 ---
 
@@ -675,10 +687,11 @@ Para el MVP académico BIOMAC, la integración primaria y requerida es:
 ```text
 PR12 ChampionResult / JSON
 → MaterializedOutputAdapter
+→ feature contract gate
 → ChampionOutput
 ```
 
-La razón es práctica: PR #12 ya entrega las salidas que necesita el dashboard (`probability`, `threshold`, `label`, `target_month`, municipio y horizonte). HU004 debe aprovechar ese contrato en lugar de duplicar la ejecución del modelo.
+La razón es práctica: PR #12 ya entrega las salidas que necesita el dashboard (`probability`, `threshold`, `label`, `target_month`, municipio y horizonte). HU004 debe aprovechar ese contrato en lugar de duplicar la ejecución del modelo, pero no puede aceptar una salida generada bajo otro contrato de features.
 
 ### Evolución futura: Modo A opcional
 
@@ -687,6 +700,7 @@ El camino ejecutable se conserva como alternativa futura:
 ```text
 ChampionInput
 → ExecutableChampionAdapter
+→ feature contract gate
 → ChampionOutput
 ```
 
@@ -714,3 +728,21 @@ ChampionService.produce(operational_context) → ChampionOutput
 ```
 
 En consecuencia, cambiar de Modo B a Modo A debe limitarse a HU004 y a la composición/configuración de dependencias. `ResultMapper`, persistencia, API, dashboard e historial deben permanecer sin refactoring estructural.
+
+---
+
+## 21. Hallazgo HU010 — incompatibilidad real detectada
+
+La ejecución HTTP real con Uvicorn y SQLite completó técnicamente el flujo, pero evidenció que la implementación actual acepta metadata contractual distinta:
+
+```text
+Champion JSON
+feature_contract_version = pr12-f5a2d39
+feature_contract_sha256   = 3af245ede70851d1616439d80441e2ad6f5d3f6465b9798d6b67fed3adb3e3dc
+
+CSV/API vigente
+feature_contract_version = pr12-74e385c3
+feature_contract_sha256   = 786ef0b5be829efe763e6c3eea385f90660e5bc191bf1469e02885d02e95e5ba
+```
+
+El adapter preserva ambas metadata, pero hoy no demuestra que la predicción corresponda al mismo contrato de entrada. Por ello **HTTP 201 + cuatro predicciones no basta para cerrar HU004/HU010**. La corrección requerida es el gate documentado en las secciones 9, 11 y 12; no se deben reescribir hashes ni editar el JSON para forzar coincidencia.
