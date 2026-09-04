@@ -1,190 +1,178 @@
 # BIOMAC — Plan de implementación del flujo operativo de predicción
 
-**Estado:** backlog objetivo  
-**Versión:** `1.1.0`  
+**Estado:** plan vigente del MVP técnico local  
+**Versión:** `1.2.0`  
 **Fuente arquitectónica:** `arquitectura.md`  
 **Contrato API:** `API-sign.md`  
+**Diccionario:** `diccionario-de-datos.md`  
+**Alcance vigente:** Entregable 2, ejecución y validación local reproducible  
 
-## 1. Alcance
+> Este documento resume el orden, alcance y estado de HU001–HU010. Los documentos `hu00x_*.md` son la especificación detallada de cada historia. Ante discrepancias, prevalecen la arquitectura, el contrato API, el diccionario de datos y la HU específica más reciente.
 
-Este plan implementa el flujo:
+## 1. Alcance vigente
+
+El flujo operativo implementado para el Entregable 2 es:
 
 ```text
-analista carga archivo mensual
+analista carga CSV mensual ya preparado
 → backend valida la carga
 → backend construye ChampionInput
-→ ChampionAdapter ejecuta el Champion aprobado
-→ se normaliza y persiste la salida
-→ dashboard muestra el nuevo resultado
-→ Refresh consulta el último resultado persistido
+→ ChampionService obtiene ChampionOutput
+→ se mapea y persiste el snapshot
+→ dashboard consulta/muestra el resultado
+→ Refresh consulta únicamente el último snapshot persistido
 ```
-
-### Fuera de alcance
-
-- entrenamiento/reentrenamiento;
-- tuning;
-- experimentación;
-- comparación y selección de candidatos;
-- promoción del Champion;
-- cambios al algoritmo;
-- definición de thresholds no entregados por el modelo/contrato;
-- construcción operacional de features desde datos crudos durante esta entrega académica.
-
-El equipo de dashboard/integración recibe un Champion aprobado o salidas materializadas compatibles.
 
 ### Decisión de alcance académico vigente
 
-Para la entrega actual, el analista carga un CSV de un único mes **ya preparado con las features requeridas por el Champion**. El backend no calcula lags, rolling, canal endémico, SIR, estacionalidad ni otras features. Esa automatización se posterga a una HU posterior.
+Para esta entrega, el analista carga un CSV de un único mes **ya preparado con las features requeridas por el Champion**. El backend no construye lags, rolling, canal endémico, SIR, estacionalidad ni otras features desde datos crudos.
 
----
-
-## 2. Arquitectura física de referencia para la implementación
-
-La arquitectura lógica definida en `arquitectura.md` se despliega para el MVP de la siguiente forma:
+La integración obligatoria y el cierre de HU010 son **local-only**:
 
 ```text
-┌──────────────────────────────┐
-│ Lovable                      │
-│ Dashboard React BIOMAC       │
-│ - upload mensual             │
-│ - consulta latest/history    │
-└──────────────┬───────────────┘
-               │ HTTP(S) / JSON
-               │ API_BASE_URL configurable
-               v
-┌─────────────────────────────────────────────┐
-│ AWS EC2                                     │
-│                                             │
-│ FastAPI + Uvicorn                           │
-│ ├─ HU001 contratos/API                      │
-│ ├─ HU002 validación CSV                     │
-│ ├─ HU003 ChampionInput                      │
-│ ├─ HU004 ChampionAdapter                    │
-│ ├─ HU005 orquestación                       │
-│ ├─ HU006 persistencia                       │
-│ └─ HU007 API read-only                      │
-│                                             │
-│ Champion T+1 / T+2                          │
-│ - paquete `.whl` preferido o artefacto      │
-│ - cargado detrás de ChampionAdapter         │
-└──────────────┬──────────────────────────────┘
-               │ deployment/materialización
-               v
-┌──────────────────────────────┐
-│ DVC + AWS S3                 │
-│ datasets / artefactos pesados│
-└──────────────────────────────┘
+Dashboard React local
+        ↓ HTTP
+FastAPI local
+        ↓
+HU002–HU009
+        ↓
+SQLite local
+        ↓
+ChampionService configurado localmente
 ```
 
-### Reglas de deployment
+El Champion puede consumirse detrás de HU004 mediante salida materializada real de PR #12 o mediante una estrategia ejecutable equivalente. HU005+ no dependen del mecanismo concreto.
 
-- Lovable aloja únicamente el frontend; no ejecuta FastAPI ni el Champion.
-- FastAPI/backend se despliega en AWS EC2.
-- `ChampionAdapter` y Champion T+1/T+2 se ejecutan en la misma EC2 para el MVP.
-- El frontend usa una `API_BASE_URL` configurable; no hardcodea IPs dentro de componentes.
-- HTTPS es el objetivo. HTTP directo a IP/puerto solo se permite como excepción temporal de demo académica.
-- FastAPI mantiene CORS con allowlist explícita del dominio Lovable y localhost de desarrollo.
-- El Champion se entrega preferentemente como paquete instalable `.whl`, siguiendo el patrón trabajado en empaquetamiento; otros formatos quedan encapsulados por `ChampionAdapter`.
-- DVC + S3 se usan para versionar/materializar datasets o artefactos pesados durante deployment. No debe ejecutarse `dvc pull` en cada request.
-- MLflow conserva trazabilidad de experimentación/modelado, pero no forma parte del camino crítico de serving del MVP.
-- La persistencia del MVP puede ser almacenamiento local estructurado detrás de interfaces de repositorio; podrá migrarse posteriormente a una base de datos sin modificar dashboard/API.
+### Fuera de alcance del cierre HU010
+
+- AWS/EC2 como gate de aceptación;
+- deployment remoto de Lovable;
+- S3/RDS como runtime obligatorio;
+- autenticación/RBAC;
+- entrenamiento/reentrenamiento;
+- tuning, experimentación o promoción de Champion;
+- feature engineering desde datos crudos;
+- SHAP online;
+- `dvc pull`, entrenamiento o acceso obligatorio a MLflow durante requests.
+
+Estos elementos pueden formar parte de una evolución posterior, pero **no se documentan como PASS ni como requisito para cerrar HU010 si no fueron ejecutados**.
 
 ---
 
-## 3. Orden de implementación
+## 2. Arquitectura física vigente y arquitectura futura
 
-| Orden | HU | Nombre | Objetivo | Dependencias | Prioridad |
+### 2.1 Arquitectura obligatoria para el Entregable 2
+
+```text
+┌─────────────────────────────────────┐
+│ Dashboard React BIOMAC local        │
+│ - upload mensual                    │
+│ - latest/history                    │
+│ - Refresh read-only                 │
+└─────────────────┬───────────────────┘
+                  │ HTTP / JSON
+                  │ VITE_BIOMAC_API_BASE_URL
+                  v
+┌─────────────────────────────────────┐
+│ FastAPI + Uvicorn local             │
+│ ├─ HU001 contratos/API              │
+│ ├─ HU002 validación CSV             │
+│ ├─ HU003 ChampionInput              │
+│ ├─ HU004 ChampionService            │
+│ ├─ HU005 orquestación               │
+│ ├─ HU006 SQLite                     │
+│ ├─ HU007 API read-only              │
+│ └─ HU009 enrichments                │
+└─────────────────┬───────────────────┘
+                  │
+                  v
+┌─────────────────────────────────────┐
+│ SQLite local + Champion provider    │
+│ materializado/ejecutable            │
+└─────────────────────────────────────┘
+```
+
+Reglas vigentes:
+
+- `VITE_BIOMAC_API_BASE_URL` es configurable y no se hardcodea en componentes;
+- SQLite permanece detrás de interfaces de repositorio;
+- el upload mensual es el trigger de una nueva ejecución;
+- `GET latest`, `GET history`, `GET runs/{run_id}` y Refresh son read-only;
+- no existe fallback productivo a mocks;
+- datos no disponibles permanecen `null`/`available=false`;
+- ningún GET ejecuta Champion, genera SHAP, accede a DVC/S3 ni entrena modelos.
+
+### 2.2 Arquitectura futura de deployment — referencia, no gate actual
+
+Una evolución posterior puede desplegar:
+
+```text
+Lovable / frontend remoto
+        ↓ HTTPS
+FastAPI + Champion en EC2
+        ↓
+persistencia/artefactos materializados
+```
+
+DVC/S3 puede utilizarse durante deployment para materializar datos/artefactos, y MLflow puede aportar trazabilidad. Ninguno forma parte del ciclo normal de request. Esta arquitectura futura **no reemplaza el alcance local vigente de HU010**.
+
+---
+
+## 3. Orden y estado de implementación
+
+| Orden | HU | Nombre | Objetivo | Dependencias | Estado |
 |---:|---|---|---|---|---|
-| 1 | HU-INT-001 | Base FastAPI y contratos | Crear esqueleto API v2, configuración, health, schemas y errores comunes. | arquitectura/API | ALTA |
-| 2 | HU-INT-002 | Carga mensual y validación | Recibir CSV mensual listo para inferencia y validar periodo, ciudades, contrato de features, tamaño y hash. | HU-INT-001 | ALTA |
-| 3 | HU-INT-003 | Adaptación a ChampionInput | Seleccionar, ordenar y convertir las features ya preparadas al contrato exacto del Champion. | HU-INT-002 + contrato Champion | ALTA |
-| 4 | HU-INT-004 | Adapter del Champion | Cargar/invocar el Champion aprobado y exponer metadata/output desacoplados del framework. | HU-INT-003 + artefacto Champion | ALTA |
-| 5 | HU-INT-005 | Orquestación del run | Coordinar validación → preparación → inferencia → mapeo → persistencia con estados e idempotencia. | HU-INT-002/003/004 | ALTA |
-| 6 | HU-INT-006 | Persistencia y trazabilidad | Guardar runs y snapshots exitosos/fallidos, manteniendo última predicción exitosa. | HU-INT-005 | ALTA |
-| 7 | HU-INT-007 | API de consulta | Exponer latest, history y detalle de run sin ejecutar el modelo. | HU-INT-006 | ALTA |
-| 8 | HU-INT-008 | Integración dashboard | Sustituir mocks, habilitar carga mensual, estados y Refresh read-only usando `API_BASE_URL`. | HU-INT-005/007 | ALTA |
-| 9 | HU-INT-009 | Explicabilidad y metadata | Exponer threshold/regla, Champion, calidad, SHAP local/explicación solo cuando exista. | HU-INT-004/006 | MEDIA |
-| 10 | HU-INT-010 | Pruebas E2E y cierre | Validar flujo completo y regresión de UI/contratos/deployment. | HU-INT-001..009 | ALTA |
+| 1 | HU-INT-001 | Base FastAPI y contratos | API v2, configuración, health, schemas y errores comunes. | arquitectura/API | COMPLETADA |
+| 2 | HU-INT-002 | Carga mensual y validación | Validar CSV mensual ya preparado, periodo, ciudades, 39 features y hash. | HU001 | COMPLETADA |
+| 3 | HU-INT-003 | Adaptación a ChampionInput | Ordenar/convertir la carga validada al contrato exacto del Champion. | HU002 | COMPLETADA |
+| 4 | HU-INT-004 | Adapter/servicio del Champion | Exponer `ChampionOutput` detrás de una frontera estable e intercambiable. | HU003 + Champion | COMPLETADA |
+| 5 | HU-INT-005 | Orquestación del run | Coordinar validación → preparación → Champion → mapeo. | HU002/003/004 | COMPLETADA |
+| 6 | HU-INT-006 | Persistencia y trazabilidad | Persistir runs/snapshots e idempotencia durable en SQLite. | HU005 | COMPLETADA |
+| 7 | HU-INT-007 | API de consulta | `latest`, `history` y detalle de run sin ejecutar Champion. | HU006 | COMPLETADA |
+| 8 | HU-INT-008 | Integración dashboard | Sustituir mocks por HTTP, upload y Refresh read-only. | HU005/007 | COMPLETADA |
+| 9 | HU-INT-009 | Metadata, calidad y explicabilidad | Enriquecer solo con información real/nullable y explicación local cuando exista. | HU004/006/007/008 | COMPLETADA |
+| 10 | HU-INT-010 | Pruebas E2E y cierre local | Validar HU001–HU009 de extremo a extremo y cerrar el MVP técnico local. | HU001–HU009 | EN IMPLEMENTACIÓN |
 
 ---
 
 # HU-INT-001 — Base FastAPI y contratos
 
-**Como** equipo de integración  
-**quiero** una API versionada y testeable  
-**para** separar el dashboard de la lógica de inferencia.
+**Como** equipo de integración, **quiero** una API versionada y testeable **para** separar el dashboard de la lógica de inferencia.
 
-## Alcance
+Alcance implementado:
 
-- crear `api/app`;
+- `/api/v2`;
+- `GET /health`;
 - configuración por variables de entorno;
-- `GET /api/v2/health`;
-- schemas Pydantic de run, prediction y error;
-- middleware de `request_id`;
+- middleware `request_id`;
 - CORS configurable;
-- manejo uniforme de excepciones;
-- OpenAPI generado automáticamente.
+- schemas y errores estables;
+- OpenAPI automático.
 
-## Consideraciones de deployment
-
-- FastAPI debe poder ejecutarse con Uvicorn en EC2.
-- CORS debe aceptar únicamente orígenes configurados; debe incluir el dominio real de Lovable en el ambiente de demo.
-- secretos y configuración de infraestructura no se hardcodean en el repositorio.
-
-## Criterios de aceptación
-
-- CA01: health responde 200.
-- CA02: campos desconocidos se rechazan donde aplique.
-- CA03: errores no exponen stack trace ni rutas internas.
-- CA04: configuración sensible no está versionada.
-- CA05: pruebas básicas pasan en local.
+Criterios esenciales: health 200, errores saneados, configuración sensible fuera de Git y pruebas locales verdes.
 
 ---
 
 # HU-INT-002 — Carga mensual lista para inferencia
 
-**Como** analista actualizador  
-**quiero** cargar el CSV del nuevo mes con features ya preparadas  
-**para** iniciar una nueva predicción únicamente con datos compatibles con el Champion.
+`POST /api/v2/monthly-runs` recibe `file` + `reference_month`.
 
-## Endpoint
+El contrato vigente exige:
 
-`POST /api/v2/monthly-runs`
-
-`multipart/form-data`:
-- `file`;
-- `reference_month`.
-
-## Validaciones mínimas
-
-- solo CSV UTF-8/UTF-8-SIG;
-- tamaño máximo configurable;
-- archivo no vacío;
-- `reference_month` válido;
+- CSV UTF-8/UTF-8-SIG no vacío;
+- periodo `YYYY-MM`;
 - exactamente Bucaramanga `68001` y Cali `76001`;
-- una fila por municipio y un único mes;
-- 39 features Champion presentes, numéricas, finitas y no nulas según contrato vigente;
-- rechazo de columnas objetivo/futuras prohibidas como input efectivo;
-- SHA-256 del archivo;
-- no persistir el archivo dentro del repositorio Git.
+- una fila por municipio;
+- 39 features Champion presentes, numéricas, finitas y no nulas;
+- rechazo de columnas objetivo/futuras prohibidas;
+- SHA-256 de la carga;
+- ningún acceso a cloud/modelos durante validación.
 
-## Criterios de aceptación
-
-- CA01: archivo válido produce `ValidatedMonthlyUpload` reutilizable.
-- CA02: archivo inválido produce error estable y comprensible.
-- CA03: no se ejecuta el Champion si falla validación.
-- CA04: se registra hash, nombre lógico, tamaño y periodo.
-- CA05: no se construyen features ni se accede a modelos/cloud.
+HU002 **no realiza feature engineering**.
 
 ---
 
-# HU-INT-003 — Adaptación mínima a `ChampionInput`
-
-**Como** servicio de inferencia  
-**quiero** convertir la carga mensual ya validada en la estructura exacta requerida por el Champion  
-**para** ejecutar inferencia reproducible sin recalcular features ni reentrenar.
-
-## Alcance vigente
+# HU-INT-003 — Adaptación mínima a ChampionInput
 
 Entrada:
 
@@ -200,138 +188,48 @@ ChampionInput
 
 Responsabilidades:
 
-- usar exclusivamente la fuente centralizada `CHAMPION_FEATURES`;
-- imponer orden municipal `68001`, `76001`;
-- imponer el orden contractual exacto de las 39 features;
-- convertir valores a representación numérica estable (`float`);
-- preservar `reference_month`;
-- preservar `source_file_sha256`;
-- preservar `feature_contract_version` y `feature_contract_sha256`;
-- excluir identificadores y targets de la matriz;
-- bloquear inconsistencias con `CHAMPION_INPUT_INVALID` en etapa `PREPARING`.
+- fuente centralizada `CHAMPION_FEATURES`;
+- orden municipal `68001`, `76001`;
+- orden exacto de 39 features;
+- conversión numérica estable;
+- preservación de corte, hash y feature contract;
+- exclusión de IDs/targets de la matriz.
 
-## Restricción
-
-HU003 **no realiza feature engineering**.
-
-No puede:
-- crear lags;
-- crear rolling windows;
-- calcular P25/P75;
-- calcular canal/SIR/endemicidad;
-- calcular `mes_sin`/`mes_cos`;
-- imputar;
-- escalar/normalizar;
-- leer `features_mensual.parquet` en runtime;
-- cargar o ejecutar el Champion.
-
-La construcción automática desde datos crudos queda postergada para una HU futura.
-
-## Criterios de aceptación
-
-- CA01: la matriz coincide con el contrato del Champion.
-- CA02: dimensión vigente 2 × 39.
-- CA03: el orden del CSV no modifica el `ChampionInput` resultante.
-- CA04: faltantes/no finitos/inconsistencias bloquean preparación.
-- CA05: Bucaramanga y Cali se materializan siempre en orden contractual.
-- CA06: salida inmutable y framework-agnostic.
+HU003 no crea lags/rolling/percentiles/canal, no imputa, no lee `features_mensual.parquet` en runtime y no ejecuta el Champion.
 
 ---
 
-# HU-INT-004 — Adapter del Champion
+# HU-INT-004 — Frontera del Champion
 
-**Como** backend BIOMAC  
-**quiero** consumir el Champion mediante una interfaz estable  
-**para** evitar que API/dashboard dependan de XGBoost, MLflow, pickle u otro framework.
+HU004 expone una frontera estable mediante `ChampionService`/`ChampionOutput` para evitar que FastAPI, orquestación y dashboard dependan de XGBoost, pickle, MLflow, JSON físico o una estrategia concreta.
 
-## Ubicación física para el MVP
-
-`ChampionAdapter` y el Champion se ejecutan **dentro de la misma instancia AWS EC2 que FastAPI**.
-
-No se crea un microservicio adicional para serving en esta fase.
+## Camino vigente del MVP
 
 ```text
-FastAPI / Orchestrator
-        ↓
+ChampionResult PR12
+→ MaterializedOutputAdapter
+→ ChampionOutput
+```
+
+## Camino compatible futuro
+
+```text
 ChampionInput
-        ↓
-ChampionAdapter
-        ↓
-Champion T+1 / T+2 instalado/materializado en EC2
-        ↓
-ChampionOutput
+→ ExecutableChampionAdapter
+→ ChampionOutput
 ```
 
-## Contrato
+No existe fallback automático entre estrategias.
 
-```python
-class ChampionAdapter:
-    def metadata(self) -> ChampionMetadata: ...
-    def predict(self, inference_input: ChampionInput) -> ChampionOutput: ...
-```
+`ChampionOutput` conserva únicamente datos respaldados por la fuente real: municipio, horizonte, target month, output nativo, probability cuando existe, threshold real por horizonte, label cuando corresponde y metadata del Champion.
 
-## Fuente del Champion
-
-Preferencia de deployment:
-
-1. paquete Python versionado `.whl` instalable en el entorno de EC2;
-2. artefacto `joblib`/pickle/XGBoost materializado durante deployment;
-3. salida materializada equivalente mediante `MaterializedOutputAdapter` si el equipo de modelado no entrega artefacto ejecutable.
-
-La estrategia elegida debe quedar detrás del adapter; FastAPI, orquestador y dashboard no conocen el mecanismo concreto.
-
-DVC/S3 puede utilizarse para materializar el artefacto durante deployment, pero **no se consulta S3/DVC por cada predicción**.
-
-MLflow puede aportar metadata/trazabilidad si existe, pero HU004 no depende de que el servidor MLflow esté disponible para cada request.
-
-## Metadata mínima
-
-- nombre;
-- versión;
-- horizontes soportados;
-- identificador MLflow/run cuando exista;
-- tipo de salida;
-- threshold/regla de decisión real;
-- `feature_contract_version`;
-- `feature_contract_sha256`;
-- fecha/hash del artefacto cuando aplique.
-
-## Salida mínima
-
-`ChampionOutput` debe representar únicamente datos producidos o respaldados por el Champion/contrato, por ejemplo:
-
-- municipio/DIVIPOLA;
-- horizonte `T+1`/`T+2`;
-- `target_month`;
-- salida nativa (`probability`, conteo o score según corresponda);
-- clase solo cuando exista una regla/threshold contractual;
-- threshold real cuando aplique;
-- metadata del Champion.
-
-No debe producir todavía el `PredictionSnapshot` final del dashboard; esa normalización pertenece a `ResultMapper`/HU005+.
-
-## Criterios de aceptación
-
-- CA01: el Champion se carga una vez por proceso cuando sea seguro hacerlo.
-- CA02: T+1/T+2 se identifican explícitamente y no se inventa un horizonte ausente.
-- CA03: `probability` solo existe si el Champion realmente la produce.
-- CA04: no se inventa threshold por defecto; debe provenir del contrato/artefacto aprobado.
-- CA05: error de carga produce `CHAMPION_NOT_READY`.
-- CA06: incompatibilidad de feature contract bloquea inferencia.
-- CA07: API/dashboard no importan tipos específicos del framework ML.
-- CA08: si solo se reciben salidas materializadas, puede implementarse un adapter alterno sin cambiar endpoints/UI.
-- CA09: ningún request ejecuta `dvc pull`, entrenamiento o acceso obligatorio a MLflow.
-- CA10: existe prueba offline con `ChampionInput` de Bucaramanga/Cali y un fake/stub de Champion.
+DVC/S3/MLflow no forman parte obligatoria de cada request.
 
 ---
 
 # HU-INT-005 — Orquestación del run mensual
 
-**Como** analista  
-**quiero** que una única carga coordine el proceso completo  
-**para** obtener la nueva predicción sin ejecutar pasos manuales internos.
-
-## Flujo
+Flujo lógico:
 
 ```text
 RECEIVED
@@ -348,29 +246,13 @@ Ante error:
 cualquier estado → FAILED
 ```
 
-## Responsabilidades
+HU005 genera trazabilidad, coordina HU002/HU003/HU004 y produce `PredictionSnapshotCandidate`. La idempotencia lógica usa:
 
-- generar `run_id`;
-- registrar timestamps;
-- ejecutar HU002 → HU003 → HU004 en orden;
-- evitar pasos posteriores si falla uno;
-- mapear salida del Champion al contrato BIOMAC;
-- producir un snapshot candidato consistente en memoria;
-- entregar `READY_TO_PERSIST` a HU006.
+```text
+reference_month + source_file_sha256 + champion_version
+```
 
-## Idempotencia
-
-Clave lógica:
-
-`reference_month + source_file_sha256 + champion_version`
-
-## Criterios de aceptación
-
-- CA01: una ejecución lógica exitosa termina en `READY_TO_PERSIST`.
-- CA02: fallo termina en `FAILED` con etapa/código.
-- CA03: reintento idéntico genera la misma clave lógica de idempotencia.
-- CA04: no existe persistencia durable ni estado global en HU005.
-- CA05: cada resultado permite reconstruir qué archivo y Champion se usaron.
+La persistencia durable pertenece a HU006.
 
 ---
 
@@ -378,50 +260,17 @@ Clave lógica:
 
 **Estado:** `[COMPLETADA — DESARROLLO]`
 
-**Como** usuario y auditor  
-**quiero** conservar cada ejecución  
-**para** consultar la última predicción y su historial sin volver a ejecutar el modelo.
+HU006 usa SQLite local configurable mediante `BIOMAC_DB_PATH` detrás de interfaces de repositorio.
 
-## Persistencia local del Entregable 2
+La transición exitosa es:
 
-HU006 usa SQLite local, con ruta configurable mediante `BIOMAC_DB_PATH`, detrás de
-`PredictionRepository`/`RunRepository` y fuera de rutas versionadas por Git. La
-promoción `READY_TO_PERSIST → PERSISTING → COMPLETED` ocurre en una transacción que
-incluye el run y todas sus predicciones; un error produce rollback y
-`PERSISTENCE_FAILED/PERSISTING`.
+```text
+READY_TO_PERSIST → PERSISTING → COMPLETED
+```
 
-La interfaz debe permitir migrar posteriormente a una base de datos sin cambiar el contrato de FastAPI ni el dashboard.
+Run y predicciones se confirman transaccionalmente antes de devolver HTTP 201. Un fallo produce rollback y error controlado.
 
-## Modelo mínimo
-
-### Run
-- `run_id`;
-- `request_id`;
-- `status`;
-- `reference_month`;
-- `source_file_sha256`;
-- `created_at`, `completed_at`;
-- `champion_version`;
-- `error_code/error_stage` si aplica.
-
-### Snapshot
-- municipio;
-- horizonte;
-- target_month;
-- clase;
-- output nativo;
-- threshold/regla;
-- estado actual/canal;
-- explicación si existe;
-- metadata de calidad/modelo.
-
-## Criterios de aceptación
-
-- CA01: snapshot se persiste antes de responder éxito.
-- CA02: `latest` solo toma runs `COMPLETED`.
-- CA03: historial conserva versiones anteriores.
-- CA04: almacenamiento queda detrás de una interfaz `PredictionRepository`.
-- CA05: resultados runtime no se versionan accidentalmente en Git.
+`latest` solo puede provenir de runs `COMPLETED`; runtime DB/artefactos no se versionan en Git.
 
 ---
 
@@ -429,257 +278,251 @@ La interfaz debe permitir migrar posteriormente a una base de datos sin cambiar 
 
 **Estado:** `[COMPLETADA — DESARROLLO]`
 
-**Como** usuario consultor  
-**quiero** consultar resultados ya calculados  
-**para** abrir o refrescar el dashboard sin ejecutar nuevamente el Champion.
+Endpoints:
 
-## Endpoints
+- `GET /api/v2/runs/{run_id}`;
+- `GET /api/v2/predictions/latest`;
+- `GET /api/v2/predictions/history`.
 
-- `GET /api/v2/runs/{run_id}`
-- `GET /api/v2/predictions/latest`
-- `GET /api/v2/predictions/history`
+Las consultas usan servicios/repo de lectura SQLite y no dependen de Champion. `latest` selecciona el último run `COMPLETED`; `history` conserva orden determinista y filtros/paginación.
 
-Filtros permitidos según endpoint:
-- municipio;
-- horizonte;
-- periodo;
-- límite/paginación para historial.
+Regla crítica:
 
-La implementación usa `RunQueryService`/`PredictionQueryService` y un repositorio
-SQLite abierto en modo read-only (`mode=ro` + `query_only`). `latest` ordena solo
-runs `COMPLETED` por `completed_at DESC, run_id DESC`; `history` ordena por
-`reference_month`, `completed_at` y `run_id`, todos descendentes. Ningún GET
-depende de la disponibilidad del Champion.
-
-## Criterios de aceptación
-
-- CA01: `latest` devuelve el último snapshot exitoso.
-- CA02: `Refresh` no llama ninguna operación de inferencia.
-- CA03: historial ordena por corte/generación.
-- CA04: si nunca existe una inferencia, se devuelve estado empty controlado.
-- CA05: Bucaramanga y Cali pueden consultarse juntas o individualmente.
+```text
+GET / Refresh
+→ lectura persistida
+→ cero inferencia
+```
 
 ---
 
-# HU-INT-008 — Integración del dashboard Lovable
+# HU-INT-008 — Integración dashboard
 
 **Estado:** `[COMPLETADA — DESARROLLO]`
 
-**Como** analista/usuario  
-**quiero** actualizar datos y consultar resultados desde la UI  
-**para** operar BIOMAC sin depender de scripts manuales.
+La composición normal usa `HttpDengueRepository` y `VITE_BIOMAC_API_BASE_URL`.
 
-## Deployment frontend
+Comportamiento:
 
-El dashboard permanece desplegado en Lovable y consume la API remota de EC2 mediante:
+- apertura → `GET latest`;
+- `Actualizar datos` → `POST monthly-runs`;
+- POST exitoso → refetch de datos canónicos;
+- Refresh → únicamente `GET latest`;
+- errores conservan el último snapshot válido;
+- no existe fallback silencioso a mocks;
+- React no calcula probability, label, threshold, canal, SHAP ni features.
 
-```text
-API_BASE_URL=https://<host-api-biomac>/api/v2
-```
+Para HU010, un POST exitoso debe invalidar/refetchear **latest e history**; Refresh manual continúa latest-only.
 
-La URL debe configurarse por ambiente; no debe estar duplicada/hardcodeada en componentes.
-
-FastAPI debe incluir el dominio real de Lovable en la allowlist CORS.
-
-## Cambios frontend
-
-- implementar `HttpDengueRepository`;
-- eliminar mocks como fuente por defecto;
-- acción `Actualizar datos`;
-- selector de archivo y mes;
-- confirmación antes de enviar;
-- estado de procesamiento;
-- éxito con `run_id` y corte;
-- error con reintento seguro;
-- tras éxito, ejecutar `GET latest`;
-- botón `Refresh` solo ejecuta `GET latest`;
-- conservar pantalla principal de decisión.
-
-La composición productiva usa `HttpDengueRepository` y una única variable pública
-`VITE_BIOMAC_API_BASE_URL`. React Query controla `latest` y la mutation de upload;
-Refresh solo refetchea `latest`, mientras que un POST exitoso invalida esa misma
-query. Los paneles cuya información no existe en HU007 muestran indisponibilidad
-explícita y nunca recuperan datos mock.
-
-## Criterios de aceptación
-
-- CA01: al abrir la página se consulta `latest` usando `API_BASE_URL`.
-- CA02: upload válido actualiza la pantalla luego de inferencia exitosa.
-- CA03: upload fallido no borra el resultado anterior.
-- CA04: ninguna clase/probabilidad/SHAP/threshold se calcula en React.
-- CA05: loading, empty, error y retry están implementados.
-- CA06: CORS permite Lovable configurado y rechaza orígenes no autorizados.
+El deployment remoto de Lovable es evolución posterior y no es gate de cierre del Entregable 2.
 
 ---
 
 # HU-INT-009 — Metadata, explicabilidad y calidad
 
-**Como** usuario  
-**quiero** conocer qué modelo y qué información sustentan la alerta  
-**para** interpretar el resultado con trazabilidad.
+**Estado:** `[COMPLETADA — DESARROLLO]`
 
-## Alcance
+HU009 agrega de forma aditiva y trazable:
 
-- Champion nombre/versión;
-- fecha de inferencia y corte;
-- calidad/frescura;
-- regla/threshold real;
-- explicación local si existe;
-- warnings cuando un dato opcional falte.
+- metadata opcional del Champion;
+- `decision_rule` por predicción;
+- `data_quality`;
+- `current_status` parcial cuando existe fuente válida;
+- explicación local únicamente cuando existe evidencia exacta;
+- warnings visibles;
+- historial presentado como **Historial de predicciones**.
 
-## Criterios de aceptación
+Disponibilidad vigente:
 
-- CA01: SHAP se etiqueta como tal solo cuando sea local y real.
-- CA02: output no probabilístico no se presenta como `%`.
-- CA03: metadata de entrenamiento se muestra solo como información recibida del Champion, no gestionada por este flujo.
-- CA04: campos no disponibles son `null`/vacíos explícitos, nunca mocks.
+- `data_quality`: disponible desde la entrada validada;
+- `p25`, `p75`, `zona_canal`: disponibles desde el corte contractual;
+- `observed_cases`, `p50`, `ratio_to_p75` y completitudes por grupo: `null` cuando no existe fuente contractual suficiente;
+- SHAP local: `available=false` en operación actual si no están materializados los parquets compatibles.
+
+Una importancia global nunca se presenta como SHAP local. Snapshots HU006 legacy continúan siendo legibles sin inventar enrichments.
 
 ---
 
-# HU-INT-010 — Pruebas E2E, deployment y cierre
+# HU-INT-010 — Pruebas E2E y cierre local
 
-**Como** equipo BIOMAC  
-**quiero** demostrar que el flujo completo es reproducible  
-**para** cerrar la integración con evidencia técnica.
+**Estado:** `[DEFINIDA — EN IMPLEMENTACIÓN]`
 
-## Escenarios mínimos
+**Como** equipo BIOMAC, **quiero** demostrar que HU001–HU009 funcionan juntas de forma reproducible **para** cerrar el MVP técnico local con evidencia verificable.
 
-1. health correcto en EC2;
-2. CORS desde dominio Lovable permitido;
-3. carga mensual válida desde frontend/API;
-4. archivo inválido;
-5. periodo inválido;
-6. falta de columnas/features;
-7. Champion no disponible;
-8. incompatibilidad de contrato Champion;
-9. inferencia T+1/T+2 exitosa;
-10. fallo durante inferencia;
-11. persistencia exitosa;
-12. última predicción después de upload;
-13. Refresh sin nueva inferencia;
-14. historial de al menos dos runs;
-15. reintento idéntico/idempotencia;
-16. Bucaramanga y Cali;
-17. contrato frontend/API;
-18. no regresión de componentes visuales;
-19. reinicio controlado de FastAPI/EC2 conserva configuración esperada;
-20. deployment no requiere entrenamiento ni acceso a MLflow por request.
-
-## Criterio de terminado
-
-Se demuestra con evidencia automatizada y manual:
+Documento detallado:
 
 ```text
-Lovable
-→ POST monthly-runs
-→ FastAPI en EC2
-→ HU002 validación
-→ HU003 ChampionInput
-→ HU004 Champion
-→ snapshot COMPLETED
-→ GET latest
-→ dashboard Lovable
+dashboard_prototipos/docs/hu010_e2e_cierre_integracion.md
 ```
 
-Luego se ejecuta `Refresh` y se verifica que el contador/log de inferencias no aumenta.
+## Objetivo
+
+Validar el flujo:
+
+```text
+CSV mensual válido
+→ POST monthly-runs
+→ HU002/HU003
+→ ChampionService HU004
+→ HU005
+→ HU006 SQLite
+→ GET latest/history/run
+→ Dashboard HTTP
+```
+
+La prueba académica puede usar una salida materializada real de PR #12, manteniendo PR12 y `main` en checkouts/worktrees separados.
+
+## Escenarios obligatorios
+
+HU010 cubre, como mínimo:
+
+1. health local;
+2. POST válido → `201 COMPLETED`;
+3. correspondencia Champion ↔ API para Bucaramanga/Cali × T+1/T+2;
+4. persistencia SQLite del mismo run;
+5. `GET latest`;
+6. `GET history`;
+7. `GET runs/{run_id}`;
+8. idempotencia durable;
+9. mismo periodo con contenido diferente sin sobrescritura silenciosa;
+10. uploads inválidos antes de Champion;
+11. Champion no disponible y preservación del latest previo;
+12. reinicio de FastAPI conservando SQLite;
+13. latest/Refresh con contador de Champion sin incremento;
+14. history read-only;
+15. frontend happy path;
+16. upload frontend → latest + history actualizados;
+17. Refresh frontend latest-only;
+18. error frontend sin pérdida del snapshot ni fallback mock.
+
+## Corrección de integración incluida en HU010
+
+Después de un POST `COMPLETED`:
+
+```text
+invalidate latestPredictionKey
++
+invalidate predictionHistoryKey
+```
+
+El botón Refresh manual sigue ejecutando únicamente `latest`.
+
+## Reglas de evidencia
+
+- un escenario no ejecutado no puede marcarse PASS;
+- estados válidos: `PASS`, `FAIL`, `BLOCKED`, `NOT_RUN`, `OUT_OF_SCOPE`;
+- golden fixture solo si deriva de una salida real PR12 con SHA, periodo y hash documentados;
+- no se inventan predicciones para automatizar E2E;
+- Browser E2E puede automatizarse con Playwright solo si se implementa y ejecuta de forma reproducible; de lo contrario se documenta como manual;
+- AWS/deployment remoto se marca `OUT_OF_SCOPE`, no PASS.
+
+## Definition of Done HU010
+
+HU010 puede declararse:
+
+```text
+[COMPLETADA — DESARROLLO / E2E LOCAL]
+```
+
+cuando:
+
+- el POST real produce `COMPLETED`;
+- Champion/API/SQLite coinciden;
+- latest/history/run funcionan;
+- idempotencia está demostrada;
+- fallos conservan latest;
+- reinicio conserva datos;
+- GET/Refresh demuestran cero Champion;
+- POST exitoso actualiza latest e history;
+- frontend no usa mocks ni lógica analítica;
+- nullability HU009 se conserva;
+- suites backend/frontend están verdes;
+- evidencia E2E queda versionada;
+- no se versionan secretos, DB, CSV, parquets o modelos runtime;
+- infraestructura cloud no se presenta como validada sin haberse ejecutado.
 
 ---
 
-## 4. Secuencia de deployment del MVP
+## 4. Secuencia de validación local del MVP
 
-La secuencia objetivo es:
+La secuencia vigente de cierre es:
 
 ```text
-1. Merge de código aprobado a main
-2. EC2: git pull/clone del repositorio
-3. Crear/activar entorno virtual
-4. Instalar dependencias API
-5. Materializar artefacto Champion:
-   - instalar `.whl`, o
-   - dvc pull durante deployment si aplica
-6. Configurar variables de entorno:
-   - API/CORS
-   - rutas/versiones Champion
-   - almacenamiento runtime
-7. Ejecutar tests focales
-8. Iniciar FastAPI/Uvicorn
-9. Verificar GET /api/v2/health
-10. Configurar `API_BASE_URL` del dashboard Lovable
-11. Probar upload → inferencia → latest
-12. Probar Refresh sin inferencia nueva
+1. Main contiene HU001–HU009 aprobadas
+2. Crear/activar entorno Python local
+3. Ejecutar baseline API
+4. Preparar SQLite dedicada de prueba
+5. Materializar/configurar ChampionService local
+6. Preparar CSV mensual compatible HU002
+7. Levantar FastAPI/Uvicorn local
+8. Verificar GET /api/v2/health
+9. Configurar VITE_BIOMAC_API_BASE_URL del frontend local
+10. Ejecutar POST → COMPLETED
+11. Verificar latest/history/run y SQLite
+12. Verificar idempotencia/errores/restart/read-only
+13. Ejecutar frontend y pruebas de integración
+14. Registrar evidencia y resultados reales
 ```
 
 No forman parte del ciclo normal de request:
+
 - `git pull`;
 - `dvc pull`;
 - instalación de paquetes;
 - entrenamiento;
-- consulta obligatoria a MLflow.
+- consulta obligatoria a MLflow;
+- generación de SHAP.
+
+### Secuencia futura de deployment — fuera del cierre actual
+
+Una futura fase podrá incluir clone/pull en EC2, materialización de artefactos, configuración CORS/HTTPS, despliegue del frontend y pruebas remotas. Ese trabajo no condiciona la finalización de HU010 local.
 
 ---
 
-## 5. Definición global de terminado
+## 5. Definición global de terminado — Entregable 2
 
-El flujo se considera implementado cuando:
+El **MVP técnico local** se considera cerrado cuando:
 
-- Lovable opera como frontend y no contiene lógica ML;
-- FastAPI está desplegado y accesible en EC2;
-- `API_BASE_URL` y CORS conectan Lovable con FastAPI;
-- no existen datos mock como fallback productivo;
-- el upload mensual es el trigger normal de inferencia;
+- HU001–HU009 están completadas;
+- HU010 demuestra el flujo E2E local con evidencia reproducible;
+- `HttpDengueRepository` es la fuente normal del dashboard;
+- el upload mensual dispara la nueva ejecución;
 - HU002 valida el CSV ya preparado;
 - HU003 produce un `ChampionInput` reproducible;
-- HU004 ejecuta un Champion versionado/trazado sin acoplar la API al framework;
-- una predicción exitosa queda persistida;
-- `Refresh` es read-only;
+- HU004 entrega `ChampionOutput` trazable detrás de una frontera intercambiable;
+- una predicción exitosa se persiste antes del 201;
+- `latest`, `history`, `run` y Refresh leen resultados persistidos sin inferencia;
 - errores no destruyen el último resultado válido;
-- Bucaramanga y Cali muestran T+1/T+2 únicamente según salidas reales;
-- artefactos/datos pesados se versionan/materializan fuera del request normal;
-- pruebas de contrato, integración, deployment y E2E pasan;
-- entrenamiento y selección del Champion permanecen fuera de este alcance.
+- Bucaramanga y Cali muestran T+1/T+2 solo según salidas reales;
+- metadata/enrichments respetan nullability y disponibilidad real;
+- no existe fallback productivo a mocks;
+- entrenamiento, selección de Champion y feature engineering desde datos crudos permanecen fuera de alcance;
+- pruebas y evidencia local están versionadas.
+
+### Readiness de producción futuro
+
+No forma parte de la definición de terminado del Entregable 2. Incluye, entre otros:
+
+- deployment remoto;
+- HTTPS y dominio;
+- CORS del dominio real;
+- autenticación/autorización;
+- estrategia durable de infraestructura/backup;
+- observabilidad/SLO;
+- CI/CD y pruebas de deployment.
 
 ---
 
-## 6. Decisión de implementación vigente — HU004 como frontera intercambiable
+## 6. Regla arquitectónica HU004 para HU005–HU010
 
-Esta sección tiene precedencia sobre referencias anteriores que describan la ejecución directa del Champion como única vía del MVP.
+A partir de HU005, el sistema recibe un `ChampionService` y entrega un `ChampionOperationalContext` neutral a `produce(...)`. El resultado es `ChampionOutput`.
 
-### Camino requerido para el MVP
+HU005–HU010 no pueden depender estructuralmente de `ChampionResult`, JSON físico, `generate_champion_output.py`, pickle/XGBoost, `.whl` o de cómo se produjo la predicción.
 
-HU004 implementará primero el consumo de la salida materializada de PR #12:
-
-```text
-ChampionResult PR12
-→ MaterializedOutputAdapter
-→ ChampionOutput
-```
-
-Este es el camino requerido para cerrar HU004 en el MVP.
-
-### Camino futuro opcional
-
-La ejecución directa permanece como evolución compatible:
+Flujo conceptual:
 
 ```text
-ChampionInput
-→ ExecutableChampionAdapter
-→ ChampionOutput
-```
-
-No es requisito para HU005 ni para cerrar el MVP. No debe utilizarse como fallback automático del camino materializado ni viceversa.
-
-### Regla para HU005–HU010
-
-A partir de HU005, el orquestador debe recibir un `ChampionService` y entregar un
-`ChampionOperationalContext` neutral a su única operación `produce`. Su resultado es
-siempre `ChampionOutput`. Las HUs
-posteriores no pueden depender de `ChampionResult`, JSON físico,
-`generate_champion_output.py`, pickle/XGBoost, `.whl` o de cómo se produjo la predicción.
-
-Por tanto, los flujos posteriores deben conceptualizarse así:
-
-```text
-ChampionService configurado dentro de HU004
+ChampionService configurado en HU004
 → produce(operational_context)
 → ChampionOutput
 → HU005 ResultMapper/orquestación
@@ -687,15 +530,30 @@ ChampionService configurado dentro de HU004
 → HU007 API read-only
 → HU008 dashboard
 → HU009 metadata/explicabilidad
-→ HU010 E2E
+→ HU010 E2E local
 ```
 
-Cambiar en el futuro de `MaterializedOutputAdapter` a `ExecutableChampionAdapter` debe requerir únicamente cambios de HU004/composición/configuración, sin refactor estructural de HU005+.
+Cambiar de `MaterializedOutputAdapter` a `ExecutableChampionAdapter` debe requerir cambios de HU004/composición/configuración, no un refactor estructural de HU005+.
 
-## 7. Implementación HU009
+---
 
-El snapshot durable incluye opcionalmente `data_quality`, `current_status`,
-`decision_rule` y `explanation`. SQLite usa tablas hijas con claves foráneas y
-lectura tolerante a snapshots HU006 sin enrichments. La UI conserva el flujo DTO
-→ mapper → modelo, muestra warnings/valores parciales, etiqueta “Historial de
-predicciones” y mantiene Refresh como GET-only.
+## 7. Estado al iniciar HU010
+
+- HU001–HU009: `[COMPLETADAS — DESARROLLO]`.
+- HU010: definida en `hu010_e2e_cierre_integracion.md`, pendiente de implementación/auditoría final.
+- Persistencia actual: SQLite local.
+- Frontend: React + `HttpDengueRepository` + React Query.
+- Explicación SHAP operacional: unavailable salvo que se materialice/configure una fuente local compatible.
+- Deployment AWS/Lovable remoto: evolución posterior, fuera del gate HU010.
+
+## 8. Resultado de implementación HU010
+
+`api/tests/test_e2e_local.py` compone FastAPI, HU002–HU009 y SQLite temporal
+reales. Valida POST, persistencia, latest/history/run, idempotencia, reinicio,
+errores y cero inferencia en GET. El frontend invalida latest e history tras POST
+exitoso y conserva Refresh como latest-only.
+
+El ensamblaje local automatizado usa un provider materializado controlado. El
+golden epidemiológico real de PR12 permanece bloqueado hasta materializar
+`features_mensual.parquet` y capturar su salida sin modificarla. AWS/Lovable
+remoto sigue siendo evolución futura y no está validado.

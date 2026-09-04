@@ -20,7 +20,10 @@ export function useDengueDashboard(repository: DengueRepository = dengueReposito
     mutationFn: ({ file, referenceMonth }: { file: File; referenceMonth: string }) =>
       repository.createMonthlyRun(file, referenceMonth),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: latestPredictionKey });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: latestPredictionKey }),
+        queryClient.invalidateQueries({ queryKey: predictionHistoryKey }),
+      ]);
     },
   });
   const history = useQuery({

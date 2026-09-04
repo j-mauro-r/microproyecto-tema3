@@ -56,9 +56,10 @@ function setup(
   }),
 ) {
   const getLatest = vi.fn().mockResolvedValue(snapshot);
+  const getHistory = vi.fn().mockResolvedValue([]);
   const repository: DengueRepository = {
     getLatest,
-    getHistory: vi.fn().mockResolvedValue([]),
+    getHistory,
     createMonthlyRun: create,
   };
   const client = new QueryClient({
@@ -67,7 +68,12 @@ function setup(
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
-  return { ...renderHook(() => useDengueDashboard(repository), { wrapper }), getLatest, create };
+  return {
+    ...renderHook(() => useDengueDashboard(repository), { wrapper }),
+    getLatest,
+    getHistory,
+    create,
+  };
 }
 
 afterEach(cleanup);
@@ -83,36 +89,46 @@ describe("useDengueDashboard", () => {
   });
 
   it("Refresh calls latest GET and never POST", async () => {
-    const { result, getLatest, create } = setup();
-    await waitFor(() => expect(result.current.latest.isSuccess).toBe(true));
+    const { result, getLatest, getHistory, create } = setup();
+    await waitFor(() =>
+      expect(result.current.latest.isSuccess && result.current.history.isSuccess).toBe(true),
+    );
     await act(async () => {
       await result.current.refresh();
     });
     expect(getLatest).toHaveBeenCalledTimes(2);
+    expect(getHistory).toHaveBeenCalledOnce();
     expect(create).not.toHaveBeenCalled();
   });
 
   it("POST COMPLETED invalidates and refetches latest", async () => {
-    const { result, getLatest, create } = setup();
-    await waitFor(() => expect(result.current.latest.isSuccess).toBe(true));
+    const { result, getLatest, getHistory, create } = setup();
+    await waitFor(() =>
+      expect(result.current.latest.isSuccess && result.current.history.isSuccess).toBe(true),
+    );
     const file = new File(["data"], "monthly.csv");
     await act(async () => {
       await result.current.upload.mutateAsync({ file, referenceMonth: "2026-08" });
     });
     expect(create).toHaveBeenCalledWith(file, "2026-08");
     await waitFor(() => expect(getLatest).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(getHistory).toHaveBeenCalledTimes(2));
   });
 
   it("POST error preserves snapshot and retry reuses file/month", async () => {
     const create = vi.fn().mockRejectedValue(new Error("upload failed"));
-    const { result } = setup(create);
-    await waitFor(() => expect(result.current.latest.isSuccess).toBe(true));
+    const { result, getLatest, getHistory } = setup(create);
+    await waitFor(() =>
+      expect(result.current.latest.isSuccess && result.current.history.isSuccess).toBe(true),
+    );
     const file = new File(["data"], "monthly.csv");
     const variables = { file, referenceMonth: "2026-08" };
     await act(async () => {
       await result.current.upload.mutateAsync(variables).catch(() => undefined);
     });
     expect(result.current.snapshot?.runId).toBe("run-1");
+    expect(getLatest).toHaveBeenCalledOnce();
+    expect(getHistory).toHaveBeenCalledOnce();
     await act(async () => {
       await result.current.upload.mutateAsync(variables).catch(() => undefined);
     });
