@@ -83,16 +83,6 @@ export function DengueDashboard() {
     );
   }
 
-  if (latest.isPending) {
-    return (
-      <main
-        role="status"
-        className="flex min-h-screen items-center justify-center gap-2 text-muted-foreground"
-      >
-        <LoaderCircle className="animate-spin" /> Cargando predicciones…
-      </main>
-    );
-  }
   if (!snapshot) {
     return (
       <main className="mx-auto flex min-h-screen max-w-2xl items-center px-5">

@@ -20,7 +20,8 @@ from api.app.persistence.service import MonthlyRunPersistenceService
 from api.app.persistence.sqlite import SQLiteUnitOfWork
 from api.tests.test_monthly_upload_validator import csv_bytes
 
-CHAMPION_OUTPUT_PATH = Path("runtime/functional/champion_output.json")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+CHAMPION_OUTPUT_PATH = REPO_ROOT / "champion_output.json"
 REAL_CHAMPION_RESULT = json.loads(CHAMPION_OUTPUT_PATH.read_text(encoding="utf-8"))
 REFERENCE_MONTH = "2025-12"
 REFERENCE_YEAR, REFERENCE_MONTH_NUMBER = map(int, REFERENCE_MONTH.split("-"))
