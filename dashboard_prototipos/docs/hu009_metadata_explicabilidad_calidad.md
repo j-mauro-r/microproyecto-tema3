@@ -1,6 +1,6 @@
 # HU009 — Metadata, explicabilidad, calidad y contexto real de la alerta
 
-**Estado:** `[DEFINIDA — PENDIENTE IMPLEMENTACIÓN]`  
+**Estado:** `[IMPLEMENTADA — PENDIENTE AUDITORÍA]`
 **Identificador:** `HU-INT-009`  
 **Prioridad:** MEDIA  
 **Dependencias:** HU004, HU006, HU007, HU008  

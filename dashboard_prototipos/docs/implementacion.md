@@ -691,3 +691,11 @@ ChampionService configurado dentro de HU004
 ```
 
 Cambiar en el futuro de `MaterializedOutputAdapter` a `ExecutableChampionAdapter` debe requerir únicamente cambios de HU004/composición/configuración, sin refactor estructural de HU005+.
+
+## 7. Implementación HU009
+
+El snapshot durable incluye opcionalmente `data_quality`, `current_status`,
+`decision_rule` y `explanation`. SQLite usa tablas hijas con claves foráneas y
+lectura tolerante a snapshots HU006 sin enrichments. La UI conserva el flujo DTO
+→ mapper → modelo, muestra warnings/valores parciales, etiqueta “Historial de
+predicciones” y mantiene Refresh como GET-only.
