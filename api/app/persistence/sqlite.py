@@ -56,6 +56,40 @@ CREATE TABLE IF NOT EXISTS predictions (
     FOREIGN KEY(run_id) REFERENCES runs(run_id) ON DELETE CASCADE,
     UNIQUE(run_id, divipola, horizon)
 );
+
+CREATE TABLE IF NOT EXISTS snapshot_quality (
+    run_id TEXT PRIMARY KEY,
+    status TEXT NOT NULL,
+    last_observed_month TEXT NOT NULL,
+    epidemiological_completeness REAL NULL,
+    climate_completeness REAL NULL,
+    warnings_json TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES runs(run_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS current_status (
+    run_id TEXT NOT NULL,
+    divipola TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES runs(run_id) ON DELETE CASCADE,
+    UNIQUE(run_id, divipola)
+);
+
+CREATE TABLE IF NOT EXISTS prediction_enrichments (
+    run_id TEXT NOT NULL,
+    divipola TEXT NOT NULL,
+    horizon TEXT NOT NULL,
+    decision_rule_json TEXT NULL,
+    explanation_json TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES runs(run_id) ON DELETE CASCADE,
+    UNIQUE(run_id, divipola, horizon)
+);
+
+CREATE TABLE IF NOT EXISTS champion_enrichments (
+    run_id TEXT PRIMARY KEY,
+    payload_json TEXT NOT NULL,
+    FOREIGN KEY(run_id) REFERENCES runs(run_id) ON DELETE CASCADE
+);
 """
 
 
@@ -221,6 +255,47 @@ class SQLitePredictionRepository:
                 for item in snapshot.predictions
             ],
         )
+        quality = snapshot.data_quality
+        if quality is not None:
+            self._connection.execute(
+                "INSERT INTO snapshot_quality VALUES (?, ?, ?, ?, ?, ?)",
+                (snapshot.run_id, quality.status, quality.last_observed_month,
+                 quality.epidemiological_completeness, quality.climate_completeness,
+                 json.dumps(quality.warnings)),
+            )
+        self._connection.executemany(
+            "INSERT INTO current_status VALUES (?, ?, ?)",
+            [(snapshot.run_id, code, json.dumps({
+                "reference_month": status.reference_month,
+                "observed_cases": status.observed_cases, "p25": status.p25,
+                "p50": status.p50, "p75": status.p75,
+                "ratio_to_p75": status.ratio_to_p75, "endemic_zone": status.endemic_zone,
+            })) for code, status in snapshot.current_status],
+        )
+        self._connection.executemany(
+            "INSERT INTO prediction_enrichments VALUES (?, ?, ?, ?, ?)",
+            [(snapshot.run_id, item.divipola, item.horizon,
+              json.dumps({"type": item.decision_rule.type,
+                          "probability_threshold": item.decision_rule.probability_threshold,
+                          "target_month_p75": item.decision_rule.target_month_p75,
+                          "decision_threshold_cases": item.decision_rule.decision_threshold_cases,
+                          "version": item.decision_rule.version}) if item.decision_rule else None,
+              json.dumps({"available": item.explanation.available,
+                          "method": item.explanation.method, "scope": item.explanation.scope,
+                          "top_features": [{"feature": feature.feature, "value": feature.value,
+                                            "contribution": feature.contribution,
+                                            "group": feature.group}
+                                           for feature in item.explanation.top_features]}))
+             for item in snapshot.predictions],
+        )
+        champion = snapshot.champion
+        self._connection.execute(
+            "INSERT INTO champion_enrichments VALUES (?, ?)",
+            (snapshot.run_id, json.dumps({"mlflow_run_id": champion.mlflow_run_id,
+             "artifact_sha256": champion.artifact_sha256,
+             "decision_rule_version": champion.decision_rule_version,
+             "explanation_method": champion.explanation_method})),
+        )
 
     def get_by_run_id(self, run_id: str) -> PredictionSnapshotCandidate | None:
         run = self._connection.execute(
@@ -344,6 +419,7 @@ def _load_snapshot(
     if not rows:
         return None
     horizons = tuple(dict.fromkeys(row["horizon"] for row in rows))
+    champion_payload = _optional_json(connection, "champion_enrichments", run["run_id"])
     champion = ChampionMetadata(
         name=run["champion_name"],
         version=run["champion_version"],
@@ -351,7 +427,24 @@ def _load_snapshot(
         output_type=rows[0]["output_type"],
         feature_contract_version=run["feature_contract_version"],
         feature_contract_sha256=run["feature_contract_sha256"],
+        **champion_payload,
     )
+    from api.app.domain.enrichment import (
+        CurrentStatusSnapshot, DataQualitySnapshot, DecisionRuleSnapshot,
+        ExplanationFeature, LocalExplanation,
+    )
+    quality_row = _optional_row(connection, "snapshot_quality", run["run_id"])
+    quality = DataQualitySnapshot(
+        status=quality_row["status"], last_observed_month=quality_row["last_observed_month"],
+        epidemiological_completeness=quality_row["epidemiological_completeness"],
+        climate_completeness=quality_row["climate_completeness"],
+        warnings=tuple(json.loads(quality_row["warnings_json"])),
+    ) if quality_row else None
+    status_rows = _optional_rows(connection, "current_status", run["run_id"])
+    statuses = tuple((row["divipola"], CurrentStatusSnapshot(**json.loads(row["payload_json"])))
+                     for row in status_rows)
+    enrichment_rows = {(row["divipola"], row["horizon"]): row for row in
+                       _optional_rows(connection, "prediction_enrichments", run["run_id"])}
     return PredictionSnapshotCandidate(
         run_id=run["run_id"],
         generated_at=_datetime(rows[0]["generated_at"]),
@@ -370,7 +463,42 @@ def _load_snapshot(
                 risk_score=row["risk_score"],
                 label=row["label"],
                 decision_threshold=row["decision_threshold"],
+                decision_rule=_decision_rule(enrichment_rows.get((row["divipola"], row["horizon"]))),
+                explanation=_explanation(enrichment_rows.get((row["divipola"], row["horizon"]))),
             )
             for row in rows
         ),
+        data_quality=quality,
+        current_status=statuses,
     )
+
+
+def _table_exists(connection: sqlite3.Connection, table: str) -> bool:
+    return connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone() is not None
+
+
+def _optional_row(connection: sqlite3.Connection, table: str, run_id: str):
+    return connection.execute(f"SELECT * FROM {table} WHERE run_id = ?", (run_id,)).fetchone() if _table_exists(connection, table) else None
+
+
+def _optional_rows(connection: sqlite3.Connection, table: str, run_id: str):
+    return connection.execute(f"SELECT * FROM {table} WHERE run_id = ?", (run_id,)).fetchall() if _table_exists(connection, table) else []
+
+
+def _optional_json(connection: sqlite3.Connection, table: str, run_id: str) -> dict:
+    row = _optional_row(connection, table, run_id)
+    return json.loads(row["payload_json"]) if row else {}
+
+
+def _decision_rule(row):
+    from api.app.domain.enrichment import DecisionRuleSnapshot
+    return DecisionRuleSnapshot(**json.loads(row["decision_rule_json"])) if row and row["decision_rule_json"] else None
+
+
+def _explanation(row):
+    from api.app.domain.enrichment import ExplanationFeature, LocalExplanation
+    if not row:
+        return LocalExplanation(available=False)
+    payload = json.loads(row["explanation_json"])
+    payload["top_features"] = tuple(ExplanationFeature(**item) for item in payload["top_features"])
+    return LocalExplanation(**payload)

@@ -56,7 +56,11 @@ function setup(
   }),
 ) {
   const getLatest = vi.fn().mockResolvedValue(snapshot);
-  const repository: DengueRepository = { getLatest, createMonthlyRun: create };
+  const repository: DengueRepository = {
+    getLatest,
+    getHistory: vi.fn().mockResolvedValue([]),
+    createMonthlyRun: create,
+  };
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });

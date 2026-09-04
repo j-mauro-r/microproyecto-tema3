@@ -32,6 +32,26 @@ function PredictionCard({ prediction }: { prediction: Prediction }) {
         <Value label="Risk score" value={prediction.riskScore} />
         <Value label="Threshold" value={prediction.decisionThreshold} />
       </dl>
+      <div className="mt-4 border-t pt-3 text-sm">
+        <p className="font-medium">
+          {prediction.explanation?.available
+            ? prediction.explanation.method === "shap" && prediction.explanation.scope === "local"
+              ? "SHAP local"
+              : `Explicación ${prediction.explanation.method ?? "local"}`
+            : "Explicación local no disponible para esta predicción."}
+        </p>
+        {prediction.explanation?.available ? (
+          <ul className="mt-2 space-y-1">
+            {prediction.explanation.topFeatures.map((feature) => (
+              <li key={feature.feature}>
+                {feature.feature}: {feature.contribution > 0 ? "+" : ""}
+                {feature.contribution} — contribución al resultado del modelo
+                {feature.value === null ? "" : ` (valor ${feature.value})`}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
     </Panel>
   );
 }
@@ -46,7 +66,7 @@ function Value({ label, value }: { label: string; value: string | number | null 
 }
 
 export function DengueDashboard() {
-  const { latest, upload, snapshot, predictions, selectedCity, setSelectedCity, refresh } =
+  const { latest, history, upload, snapshot, predictions, selectedCity, setSelectedCity, refresh } =
     useDengueDashboard();
   const empty =
     latest.error instanceof BiomacApiError && latest.error.code === "PREDICTION_NOT_FOUND";
@@ -125,6 +145,13 @@ export function DengueDashboard() {
       <div className="text-xs text-muted-foreground">
         Actualizado {formatDateTime(snapshot.generatedAt)} · Run {snapshot.runId}
       </div>
+      <Panel title="Metadata y trazabilidad">
+        <dl className="grid gap-2 text-sm md:grid-cols-3">
+          <Value label="Output" value={snapshot.champion.outputType} />
+          <Value label="Feature contract" value={snapshot.champion.featureContractVersion} />
+          <Value label="Run" value={snapshot.runId} />
+        </dl>
+      </Panel>
       <div className="flex gap-2" role="radiogroup" aria-label="Ciudad">
         {CITIES.map((city) => (
           <Button
@@ -152,21 +179,61 @@ export function DengueDashboard() {
 
       <section className="grid gap-4 md:grid-cols-3">
         <Panel title="Canal endémico">
-          <p className="text-sm text-muted-foreground">
-            Información no disponible en esta versión.
-          </p>
+          {snapshot.currentStatus?.[selectedCity] ? (
+            <dl className="grid gap-2 text-sm">
+              <Value
+                label="Casos observados"
+                value={snapshot.currentStatus[selectedCity]?.observedCases ?? null}
+              />
+              <Value label="P25" value={snapshot.currentStatus[selectedCity]?.p25 ?? null} />
+              <Value label="P50" value={snapshot.currentStatus[selectedCity]?.p50 ?? null} />
+              <Value label="P75" value={snapshot.currentStatus[selectedCity]?.p75 ?? null} />
+              <Value
+                label="Zona"
+                value={snapshot.currentStatus[selectedCity]?.endemicZone ?? null}
+              />
+            </dl>
+          ) : (
+            <p className="text-sm text-muted-foreground">Información de contexto no disponible.</p>
+          )}
         </Panel>
         <Panel title="Explicabilidad">
           <p className="text-sm text-muted-foreground">
-            Información no disponible en esta versión.
+            La explicación se presenta por horizonte junto a cada predicción y describe
+            contribuciones del modelo, no causalidad.
           </p>
         </Panel>
-        <Panel title="Historia y calidad">
-          <p className="text-sm text-muted-foreground">
-            Información no disponible en esta versión.
-          </p>
+        <Panel title="Calidad de datos">
+          {snapshot.dataQuality ? (
+            <div className="text-sm">
+              <p>Estado: {snapshot.dataQuality.status}</p>
+              <p>Último mes observado: {snapshot.dataQuality.lastObservedMonth}</p>
+              {snapshot.dataQuality.warnings.map((warning) => (
+                <p role="alert" className="mt-2 text-amber-700" key={warning}>
+                  {warning}
+                </p>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Información de calidad no disponible.</p>
+          )}
         </Panel>
       </section>
+      <Panel title="Historial de predicciones">
+        {history.data?.length ? (
+          <ul className="space-y-1 text-sm">
+            {history.data.map((item) => (
+              <li key={item.runId}>
+                {item.referenceMonth} · Run {item.runId}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            No hay historial de predicciones disponible.
+          </p>
+        )}
+      </Panel>
     </main>
   );
 }

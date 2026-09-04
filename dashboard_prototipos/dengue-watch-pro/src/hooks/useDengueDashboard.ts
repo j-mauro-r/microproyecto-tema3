@@ -5,6 +5,7 @@ import type { DengueRepository } from "@/services/dengue";
 import type { MunicipalityCode } from "@/types/dengue";
 
 export const latestPredictionKey = ["biomac", "predictions", "latest"] as const;
+export const predictionHistoryKey = ["biomac", "predictions", "history"] as const;
 
 export function useDengueDashboard(repository: DengueRepository = dengueRepository) {
   const queryClient = useQueryClient();
@@ -22,6 +23,12 @@ export function useDengueDashboard(repository: DengueRepository = dengueReposito
       await queryClient.invalidateQueries({ queryKey: latestPredictionKey });
     },
   });
+  const history = useQuery({
+    queryKey: predictionHistoryKey,
+    queryFn: ({ signal }) => repository.getHistory(signal),
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
   return {
     latest,
     upload,
@@ -29,6 +36,7 @@ export function useDengueDashboard(repository: DengueRepository = dengueReposito
     predictions: latest.data?.predictions.filter(
       (prediction) => prediction.divipola === selectedCity,
     ),
+    history,
     selectedCity,
     setSelectedCity,
     refresh: () => latest.refetch(),

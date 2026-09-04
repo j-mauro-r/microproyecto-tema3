@@ -1,6 +1,6 @@
-# Dengue Alert Dashboard
+# BIOMAC — Sistema de alerta temprana de dengue
 
-Construye en Lovable el FRONTEND del prototipo BIOMAC — Sistema de Alerta Temprana de Dengue Grave.
+Dashboard BIOMAC conectado a FastAPI `/api/v2`, sin fallback productivo a mocks.
 
 OBJETIVO
 
@@ -24,7 +24,8 @@ ALCANCE
 
 - Mostrar además la probabilidad asociada.
 
-- Por ahora usar datos mock desacoplados. No implementar backend.
+- Metadata, calidad, contexto, explicabilidad e historial se muestran únicamente
+  cuando llegan desde snapshots persistidos reales.
 
 DASHBOARD
 

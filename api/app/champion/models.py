@@ -26,6 +26,8 @@ class ChampionMetadata:
     feature_contract_sha256: str
     mlflow_run_id: str | None = None
     artifact_sha256: str | None = None
+    decision_rule_version: str | None = None
+    explanation_method: str | None = None
 
     def __post_init__(self) -> None:
         for value, field_name in (
