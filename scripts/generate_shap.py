@@ -12,7 +12,7 @@ import pickle
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
-from model_utils import make_t2_target
+from model_utils import ANIO_FIN_TRAIN, make_t2_target
 
 import matplotlib
 matplotlib.use("Agg")
@@ -27,7 +27,7 @@ MODEL_DIR  = os.path.join(ROOT, "model")
 REPORT_DIR = os.path.join(ROOT, "reports")
 
 TARGET    = "objetivo"
-TRAIN_END = 2023
+TRAIN_END = ANIO_FIN_TRAIN
 CITIES    = {"68001": "Bucaramanga", "76001": "Cali"}
 TOP_N     = 15
 
