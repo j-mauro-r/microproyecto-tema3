@@ -12,7 +12,6 @@ import hashlib
 import json
 import os
 import pickle
-import subprocess
 import sys
 from dataclasses import asdict, dataclass
 from datetime import date
@@ -35,6 +34,10 @@ PROHIBIDAS = {
     "objetivo", "casos_objetivo", "anio_objetivo", "mes_objetivo", "__target_t2",
 }
 MODEL_NAME = "biomac-champion"
+# Both Champion artifacts were last changed by the full retraining commit f5a2d39.
+MODEL_VERSION = "pr12-f5a2d39"
+FEATURE_CONTRACT_VERSION = "pr12-74e385c3"
+FEATURE_CONTRACT_SHA256 = "786ef0b5be829efe763e6c3eea385f90660e5bc191bf1469e02885d02e95e5ba"
 
 
 @dataclass
@@ -59,17 +62,6 @@ class ChampionResult:
     predictions: list
 
 
-def _git_sha() -> str:
-    try:
-        sha = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=ROOT, stderr=subprocess.DEVNULL,
-        ).decode().strip()
-        return f"pr12-{sha}"
-    except Exception:
-        return "pr12-unknown"
-
-
 def _load_champion(horizonte: int):
     """Returns (model, calibrator, features, threshold)."""
     name = "xgb_clasico_calibrated.pkl" if horizonte == 1 else f"xgb_clasico_T{horizonte}_calibrated.pkl"
@@ -79,6 +71,21 @@ def _load_champion(horizonte: int):
     with open(path, "rb") as fh:
         pkg = pickle.load(fh)
     return pkg["model"], pkg["calibrator"], pkg["features"], float(pkg["best_threshold"])
+
+
+def _validate_feature_contract(f1: list[str], f2: list[str]) -> str:
+    if f1 != f2:
+        raise ValueError("Los Champion T+1 y T+2 usan contratos de features distintos")
+
+    feature_sha256 = hashlib.sha256(
+        "\n".join(f1).encode("utf-8")
+    ).hexdigest()
+    if feature_sha256 != FEATURE_CONTRACT_SHA256:
+        raise ValueError(
+            "El contrato de features del Champion no coincide con el aprobado: "
+            f"{feature_sha256} != {FEATURE_CONTRACT_SHA256}"
+        )
+    return feature_sha256
 
 
 def _validate(result: dict):
@@ -135,8 +142,7 @@ def main():
     m1, c1, f1, thr1 = _load_champion(1)
     m2, c2, f2, thr2 = _load_champion(2)
 
-    version = _git_sha()
-    fsha    = hashlib.sha256(",".join(f1).encode()).hexdigest()
+    feature_contract_sha256 = _validate_feature_contract(f1, f2)
 
     predictions = []
     for div in sorted(CITIES):
@@ -166,10 +172,10 @@ def main():
 
     result = asdict(ChampionResult(
         model_name=MODEL_NAME,
-        model_version=version,
+        model_version=MODEL_VERSION,
         reference_month=reference_month,
-        feature_contract_version=version,
-        feature_contract_sha256=fsha,
+        feature_contract_version=FEATURE_CONTRACT_VERSION,
+        feature_contract_sha256=feature_contract_sha256,
         output_type="probability",
         predictions=predictions,
     ))
