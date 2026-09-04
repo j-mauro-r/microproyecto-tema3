@@ -1,0 +1,46 @@
+{
+  "model_name": "biomac-champion",
+  "model_version": "pr12-f5a2d39",
+  "reference_month": "2025-12",
+  "feature_contract_version": "pr12-f5a2d39",
+  "feature_contract_sha256": "3af245ede70851d1616439d80441e2ad6f5d3f6465b9798d6b67fed3adb3e3dc",
+  "output_type": "probability",
+  "predictions": [
+    {
+      "divipola": "68001",
+      "municipality": "Bucaramanga",
+      "horizon": "T+1",
+      "target_month": "2026-01",
+      "probability": 0.7347,
+      "threshold": 0.34,
+      "label": "EXCESO"
+    },
+    {
+      "divipola": "68001",
+      "municipality": "Bucaramanga",
+      "horizon": "T+2",
+      "target_month": "2026-02",
+      "probability": 0.6724,
+      "threshold": 0.27,
+      "label": "EXCESO"
+    },
+    {
+      "divipola": "76001",
+      "municipality": "Cali",
+      "horizon": "T+1",
+      "target_month": "2026-01",
+      "probability": 0.0132,
+      "threshold": 0.34,
+      "label": "NO_EXCESO"
+    },
+    {
+      "divipola": "76001",
+      "municipality": "Cali",
+      "horizon": "T+2",
+      "target_month": "2026-02",
+      "probability": 0.015,
+      "threshold": 0.27,
+      "label": "NO_EXCESO"
+    }
+  ]
+}
