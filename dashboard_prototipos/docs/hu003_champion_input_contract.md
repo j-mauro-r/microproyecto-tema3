@@ -5,13 +5,13 @@
 - **ID canónico:** HU003
 - **Alias en backlog:** HU-INT-003
 - **Nombre:** Adaptación mínima al contrato del Champion
-- **Estado:** `[PENDIENTE]`
+- **Estado:** `[COMPLETADA — DESARROLLO / HANDOFF CONTRACTUAL REFORZADO]`
 - **Prioridad:** ALTA
 - **Tipo:** Backend / Integración / Preparación de inferencia
 - **Metodología:** DWP (Deep Work Plan)
 - **Dependencia previa:** HU002 — Carga mensual lista para inferencia `[COMPLETADA]`
 - **Habilita:** HU004 — Adapter del Champion (`HU-INT-004`)
-- **Gate posterior:** HU004 no debe iniciar hasta que exista un `ChampionInput` determinista, ordenado y verificable para Bucaramanga y Cali, construido únicamente desde un `ValidatedMonthlyUpload` válido.
+- **Gate posterior:** HU004 no debe aceptar ningún resultado Champion cuyo `feature_contract_version` o `feature_contract_sha256` difiera de los valores transportados por el `ChampionInput`/contexto operacional del mismo run.
 
 ### Fuentes de verdad
 
@@ -212,7 +212,7 @@ El resultado debe conservar:
 - `feature_contract_version`;
 - `feature_contract_sha256`.
 
-HU004 debe poder verificar qué contrato recibió sin volver a leer el archivo cargado.
+Estos dos últimos campos representan el **contrato efectivo del input usado por el run** y deben viajar intactos hasta HU004. No son metadata decorativa: HU004 debe compararlos contra la metadata contractual del Champion antes de aceptar su salida.
 
 ---
 
@@ -697,6 +697,7 @@ HU004 será responsable de:
 
 - cargar el artefacto Champion aprobado;
 - comprobar compatibilidad de metadata/feature contract;
+- exigir igualdad exacta de `feature_contract_version` y `feature_contract_sha256` entre el input/contexto del run y el Champion/resultado materializado;
 - convertir `ChampionInput` al tipo que requiera el framework;
 - invocar T+1/T+2 según contrato real;
 - devolver output nativo + metadata sin inventar probabilidades/thresholds.
@@ -712,7 +713,25 @@ HU003 no se considera terminada porque exista una lista de números. Debe demost
 ```text
 HU002 = ¿el archivo es válido y compatible?
 HU003 = ¿puedo construir exactamente el input esperado?
-HU004 = ejecutar el Champion con ese input
+HU004 = ejecutar/aceptar el Champion únicamente si declara el mismo contrato
 ```
 
 Para el microproyecto actual, HU003 es deliberadamente pequeña. Su valor es eliminar ambigüedad de orden, estructura y trazabilidad antes de introducir el modelo real.
+
+---
+
+## 17. Hallazgo HU010 — septiembre 2026
+
+La prueba HTTP real de HU010 encontró que el flujo podía finalizar `201 COMPLETED` aun cuando el contrato usado para validar el CSV y el declarado por la salida materializada PR12 eran distintos:
+
+```text
+Champion JSON
+feature_contract_version = pr12-f5a2d39
+feature_contract_sha256   = 3af245ede70851d1616439d80441e2ad6f5d3f6465b9798d6b67fed3adb3e3dc
+
+CSV/API vigente
+feature_contract_version = pr12-74e385c3
+feature_contract_sha256   = 786ef0b5be829efe763e6c3eea385f90660e5bc191bf1469e02885d02e95e5ba
+```
+
+Este hallazgo **no invalida el builder de HU003**: confirma que HU003 ya transporta la metadata necesaria, pero refuerza que esos valores constituyen el contrato efectivo del input y deben ser usados como gate obligatorio por HU004/HU005 antes de persistir un resultado. HU003 no debe “corregir” ni reemplazar hashes para forzar compatibilidad.
