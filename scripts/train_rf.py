@@ -1,6 +1,6 @@
 """
 Entrena Random Forest sobre features_mensual.parquet con objetivo 'brote'.
-Registra en MLflow (experimento 'dengue-brote-clasico').
+Registra en MLflow (experimento 'sat-dengue').
 Uso:
   python scripts/train_rf.py               # T+1
   python scripts/train_rf.py --horizonte 2  # T+2
@@ -17,7 +17,8 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import average_precision_score, f1_score, roc_auc_score
 
 sys.path.insert(0, os.path.dirname(__file__))
-from model_utils import full_metrics, log_full_metrics, make_t2_target, print_metrics
+from model_utils import (ANIO_FIN_TRAIN, EXPERIMENT, full_metrics, log_full_metrics,
+                         make_t2_target, print_metrics, registrar_por_alcance)
 
 ROOT      = os.path.join(os.path.dirname(__file__), "..")
 DATA_PATH = os.path.join(ROOT, "data", "processed", "features_mensual.parquet")
@@ -28,7 +29,7 @@ PROHIBIDAS = {
     "anio", "mes", "casos_grave", "casos_clasico", "brote", "es_inicio",
     "__target_t2",
 }
-TRAIN_END = 2023
+TRAIN_END = ANIO_FIN_TRAIN  # 2022, importado de src/evaluation/splits.py
 CITIES    = {"68001": "Bucaramanga", "76001": "Cali"}
 
 PARAMS = dict(
@@ -40,7 +41,6 @@ PARAMS = dict(
     n_jobs=-1,
 )
 
-EXPERIMENT = "dengue-brote-clasico"
 
 
 def feature_cols(df):
@@ -60,7 +60,7 @@ def main():
     df = pd.read_parquet(DATA_PATH)
 
     if H == 2:
-        df, target_col = make_t2_target(df, "brote")
+        df, target_col = make_t2_target(df, "objetivo")
     else:
         target_col = "brote"
 
@@ -110,20 +110,8 @@ def main():
             "best_threshold": best_thr,
         })
 
-        m_te = full_metrics(y_te, pred_te, y_ini_te)
-        log_full_metrics(m_te, prefix="test")
         print(f"\nT+{H} | AUROC={te_auroc:.4f} AP={te_ap:.4f} thr={best_thr:.2f}")
-        print_metrics(m_te, f"Global T+{H}")
-
-        for div, city in CITIES.items():
-            mask = test["divipola"].astype(str) == div
-            if mask.sum() < 5:
-                continue
-            y_c = y_te[mask]; pr_c = prob_te[mask]
-            ini_c = y_ini_te[mask] if y_ini_te is not None else None
-            m_c = full_metrics(y_c, (pr_c >= best_thr).astype(int), ini_c)
-            log_full_metrics(m_c, prefix=f"test_{div}")
-            print_metrics(m_c, f"{city} ({div})")
+        registrar_por_alcance(test["divipola"], y_te, pred_te, y_ini_te, prob_te)
 
         mlflow.sklearn.log_model(
             model, artifact_path="model",

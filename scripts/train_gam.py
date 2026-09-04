@@ -18,7 +18,8 @@ from pygam import LogisticGAM, s, l, f
 from sklearn.metrics import average_precision_score, f1_score, roc_auc_score
 
 sys.path.insert(0, os.path.dirname(__file__))
-from model_utils import ANIO_FIN_TRAIN, EXPERIMENT, full_metrics, log_full_metrics, make_t2_target, print_metrics
+from model_utils import (ANIO_FIN_TRAIN, EXPERIMENT, full_metrics, log_full_metrics,
+                         make_t2_target, print_metrics, registrar_por_alcance)
 
 ROOT       = os.path.join(os.path.dirname(__file__), "..")
 DATA_PATH  = os.path.join(ROOT, "data", "processed", "features_mensual.parquet")
@@ -138,20 +139,8 @@ def main():
             "best_threshold": best_thr,
         })
 
-        m_te = full_metrics(y_te, pred_te, y_ini_te, y_score=prob_te)
-        log_full_metrics(m_te)
         print(f"\nT+{H} | AUROC={te_auroc:.4f} AP={te_ap:.4f} thr={best_thr:.2f}")
-        print_metrics(m_te, f"Global T+{H}")
-
-        for div, city in CITIES.items():
-            mask = (test_divipola == div).values
-            if mask.sum() < 5:
-                continue
-            y_c   = y_te[mask]; pr_c = prob_te[mask]
-            ini_c = y_ini_te[mask] if y_ini_te is not None else None
-            m_c   = full_metrics(y_c, (pr_c >= best_thr).astype(int), ini_c, y_score=pr_c)
-            log_full_metrics(m_c, prefix=div)
-            print_metrics(m_c, f"{city} ({div})")
+        registrar_por_alcance(test_divipola, y_te, pred_te, y_ini_te, prob_te)
 
         os.makedirs(MODEL_DIR, exist_ok=True)
         with open(model_file, "wb") as fh:
