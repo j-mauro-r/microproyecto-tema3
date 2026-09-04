@@ -2,8 +2,8 @@
   "model_name": "biomac-champion",
   "model_version": "pr12-f5a2d39",
   "reference_month": "2025-12",
-  "feature_contract_version": "pr12-f5a2d39",
-  "feature_contract_sha256": "3af245ede70851d1616439d80441e2ad6f5d3f6465b9798d6b67fed3adb3e3dc",
+  "feature_contract_version": "pr12-74e385c3",
+  "feature_contract_sha256": "786ef0b5be829efe763e6c3eea385f90660e5bc191bf1469e02885d02e95e5ba",
   "output_type": "probability",
   "predictions": [
     {
