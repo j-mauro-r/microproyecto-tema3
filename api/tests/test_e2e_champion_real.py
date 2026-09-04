@@ -1,4 +1,4 @@
-"""E2E evidence that the current real PR12 output is contractually rejected."""
+"""E2E evidence for the compatible real PR12 Champion output."""
 
 from __future__ import annotations
 
@@ -18,12 +18,11 @@ from api.app.main import create_app
 from api.app.orchestration.monthly import MonthlyPredictionOrchestrator
 from api.app.persistence.service import MonthlyRunPersistenceService
 from api.app.persistence.sqlite import SQLiteUnitOfWork
-from api.tests.test_e2e_local import CONTROLLED_RESULT
 from api.tests.test_monthly_upload_validator import csv_bytes
 
 CHAMPION_OUTPUT_PATH = Path("runtime/functional/champion_output.json")
 REAL_CHAMPION_RESULT = json.loads(CHAMPION_OUTPUT_PATH.read_text(encoding="utf-8"))
-REFERENCE_MONTH = REAL_CHAMPION_RESULT["reference_month"]
+REFERENCE_MONTH = "2025-12"
 REFERENCE_YEAR, REFERENCE_MONTH_NUMBER = map(int, REFERENCE_MONTH.split("-"))
 
 
@@ -32,12 +31,12 @@ def _settings(path: Path) -> Settings:
                     debug=False, cors_origins=(), db_path=str(path))
 
 
-def _composition(path: Path, result: dict[str, object]):
+def _composition(path: Path):
     validator = MonthlyUploadValidator(max_bytes=100_000, contract=MonthlyUploadContract())
     champion_service = build_champion_service(
         "materialized",
         materialized_result_provider=CallableMaterializedChampionResultProvider(
-            lambda _reference_month: result
+            lambda _reference_month: REAL_CHAMPION_RESULT
         ),
     )
     app = create_app(
@@ -50,72 +49,75 @@ def _composition(path: Path, result: dict[str, object]):
     return app
 
 
-def _post(client: TestClient, *, reference_month: str, year: int, month: int):
+def _post(client: TestClient):
     return client.post(
         "/api/v2/monthly-runs",
-        files={"file": ("monthly.csv", csv_bytes(year=year, month=month), "text/csv")},
-        data={"reference_month": reference_month},
+        files={"file": (
+            "monthly.csv",
+            csv_bytes(year=REFERENCE_YEAR, month=REFERENCE_MONTH_NUMBER),
+            "text/csv",
+        )},
+        data={"reference_month": REFERENCE_MONTH},
     )
 
 
-def test_real_champion_contract_mismatch_is_explicit_and_returns_422(tmp_path):
-    path = tmp_path / "real-mismatch.sqlite"
-    with TestClient(_composition(path, REAL_CHAMPION_RESULT), raise_server_exceptions=False) as client:
-        response = _post(client, reference_month=REFERENCE_MONTH, year=REFERENCE_YEAR,
-                         month=REFERENCE_MONTH_NUMBER)
-
-    assert response.status_code == 422
-    error = response.json()["error"]
-    assert error["code"] == "CHAMPION_INPUT_INVALID"
-    assert error["stage"] == "INFERENCING"
-    assert error["details"] == {
-        "reason": "feature_contract_mismatch",
-        "expected_version": CHAMPION_FEATURE_CONTRACT_VERSION,
-        "received_version": REAL_CHAMPION_RESULT["feature_contract_version"],
-        "expected_sha256": CHAMPION_FEATURE_CONTRACT_SHA256,
-        "received_sha256": REAL_CHAMPION_RESULT["feature_contract_sha256"],
-    }
+def _prediction_map(predictions):
+    return {(item["divipola"], item["horizon"]): item for item in predictions}
 
 
-def test_real_mismatch_persists_failed_run_without_predictions_or_snapshot(tmp_path):
-    path = tmp_path / "failed-run.sqlite"
-    with TestClient(_composition(path, REAL_CHAMPION_RESULT), raise_server_exceptions=False) as client:
-        response = _post(client, reference_month=REFERENCE_MONTH, year=REFERENCE_YEAR,
-                         month=REFERENCE_MONTH_NUMBER)
+def test_real_champion_completes_and_persists_predictions_and_latest(tmp_path):
+    path = tmp_path / "real-champion.sqlite"
+    with TestClient(_composition(path), raise_server_exceptions=False) as client:
+        response = _post(client)
+        assert response.status_code == 201
+        body = response.json()
+        run = body["run"]
+        snapshot = body["prediction_snapshot"]
+        assert run["status"] == "COMPLETED"
+        assert run["reference_month"] == REFERENCE_MONTH
+        assert snapshot["run_id"] == run["run_id"]
+        assert snapshot["reference_month"] == REFERENCE_MONTH
+
+        expected = _prediction_map(REAL_CHAMPION_RESULT["predictions"])
+        assert {
+            key: (item["municipality"], item["probability"], item["threshold"], item["label"])
+            for key, item in expected.items()
+        } == {
+            ("68001", "T+1"): ("Bucaramanga", 0.7347, 0.34, "EXCESO"),
+            ("68001", "T+2"): ("Bucaramanga", 0.6724, 0.27, "EXCESO"),
+            ("76001", "T+1"): ("Cali", 0.0132, 0.34, "NO_EXCESO"),
+            ("76001", "T+2"): ("Cali", 0.0150, 0.27, "NO_EXCESO"),
+        }
+        actual = _prediction_map(snapshot["predictions"])
+        assert set(actual) == set(expected)
+        for key, expected_item in expected.items():
+            actual_item = actual[key]
+            assert (
+                actual_item["municipality"], actual_item["probability"],
+                actual_item["decision_threshold"], actual_item["label"],
+            ) == (
+                expected_item["municipality"], expected_item["probability"],
+                expected_item["threshold"], expected_item["label"],
+            )
+
         latest = client.get("/api/v2/predictions/latest")
+        assert latest.status_code == 200
+        latest_snapshot = latest.json()["prediction_snapshot"]
+        assert latest_snapshot["run_id"] == run["run_id"]
+        assert len(latest_snapshot["predictions"]) == 4
 
-    assert response.status_code == 422
-    assert latest.status_code == 404
     with sqlite3.connect(path) as connection:
-        assert connection.execute("SELECT status FROM runs").fetchall() == [("FAILED",)]
-        assert connection.execute("SELECT COUNT(*) FROM predictions").fetchone()[0] == 0
-
-
-def test_real_mismatch_preserves_previous_completed_latest(tmp_path):
-    path = tmp_path / "preserve-latest.sqlite"
-    controlled_month = CONTROLLED_RESULT["reference_month"]
-    controlled_year, controlled_month_number = map(int, controlled_month.split("-"))
-    with TestClient(_composition(path, CONTROLLED_RESULT), raise_server_exceptions=False) as client:
-        completed = _post(client, reference_month=controlled_month, year=controlled_year,
-                          month=controlled_month_number)
-        completed_run_id = completed.json()["run"]["run_id"]
-
-    with TestClient(_composition(path, REAL_CHAMPION_RESULT), raise_server_exceptions=False) as client:
-        rejected = _post(client, reference_month=REFERENCE_MONTH, year=REFERENCE_YEAR,
-                         month=REFERENCE_MONTH_NUMBER)
-        latest = client.get("/api/v2/predictions/latest")
-
-    assert completed.status_code == 201
-    assert rejected.status_code == 422
-    assert latest.status_code == 200
-    assert latest.json()["prediction_snapshot"]["run_id"] == completed_run_id
-    with sqlite3.connect(path) as connection:
-        assert connection.execute(
-            "SELECT COUNT(*) FROM runs WHERE status='COMPLETED'"
-        ).fetchone()[0] == 1
+        assert connection.execute("SELECT status FROM runs").fetchall() == [("COMPLETED",)]
         assert connection.execute("SELECT COUNT(*) FROM predictions").fetchone()[0] == 4
+        for table in (
+            "snapshot_quality", "current_status", "prediction_enrichments",
+            "champion_enrichments",
+        ):
+            assert connection.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE run_id=?", (run["run_id"],)
+            ).fetchone()[0] > 0
 
 
-def test_real_artifact_and_api_contract_are_demonstrably_different():
-    assert REAL_CHAMPION_RESULT["feature_contract_version"] != CHAMPION_FEATURE_CONTRACT_VERSION
-    assert REAL_CHAMPION_RESULT["feature_contract_sha256"] != CHAMPION_FEATURE_CONTRACT_SHA256
+def test_real_artifact_and_api_contract_are_equal():
+    assert REAL_CHAMPION_RESULT["feature_contract_version"] == CHAMPION_FEATURE_CONTRACT_VERSION
+    assert REAL_CHAMPION_RESULT["feature_contract_sha256"] == CHAMPION_FEATURE_CONTRACT_SHA256
