@@ -156,3 +156,13 @@ cd <repository-name>
 npm i
 npm run dev
 ```
+
+Copy `.env.example` to `.env.local` and configure the public API base URL:
+
+```sh
+VITE_BIOMAC_API_BASE_URL=http://127.0.0.1:8001/api/v2
+```
+
+The value must include `/api/v2` and must not end in a slash. The dashboard uses
+FastAPI as its normal data source; the mock repository is available only for
+explicit tests and is never an automatic fallback.

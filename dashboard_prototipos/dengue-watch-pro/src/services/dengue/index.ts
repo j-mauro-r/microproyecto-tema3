@@ -1,7 +1,8 @@
-import { MockDengueRepository } from "./dengue.mock.repository";
-import type { DengueRepository } from "./dengue.repository";
+import { getApiBaseUrl } from "./api-config";
+import { HttpDengueRepository } from "./dengue.http.repository";
 
-/** Punto único de inyección: cambiar aquí por HttpDengueRepository. */
-export const dengueRepository: DengueRepository = new MockDengueRepository();
+export const dengueRepository = new HttpDengueRepository(getApiBaseUrl);
 
-export type { DengueRepository };
+export { BiomacApiError, HttpDengueRepository } from "./dengue.http.repository";
+export { BiomacConfigurationError, normalizeApiBaseUrl } from "./api-config";
+export type { DengueRepository } from "./dengue.repository";

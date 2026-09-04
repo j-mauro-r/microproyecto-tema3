@@ -1,25 +1,35 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { dengueRepository } from "@/services/dengue";
-import type { CityId, DashboardData } from "@/types/dengue";
+import type { MunicipalityCode } from "@/types/dengue";
+
+export const latestPredictionKey = ["biomac", "predictions", "latest"] as const;
 
 export function useDengueDashboard() {
-  const [selectedCity, setSelectedCity] = useState<CityId>("bucaramanga");
-
-  const query = useQuery<DashboardData>({
-    queryKey: ["dengue", "dashboard"],
-    queryFn: () => dengueRepository.getDashboard(),
+  const queryClient = useQueryClient();
+  const [selectedCity, setSelectedCity] = useState<MunicipalityCode>("68001");
+  const latest = useQuery({
+    queryKey: latestPredictionKey,
+    queryFn: ({ signal }) => dengueRepository.getLatest(signal),
     staleTime: 5 * 60 * 1000,
+    retry: false,
   });
-
-  const data = query.data;
-  const forecast = data?.forecasts[selectedCity];
-
+  const upload = useMutation({
+    mutationFn: ({ file, referenceMonth }: { file: File; referenceMonth: string }) =>
+      dengueRepository.createMonthlyRun(file, referenceMonth),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: latestPredictionKey });
+    },
+  });
   return {
-    isLoading: query.isLoading,
-    data,
-    forecast,
+    latest,
+    upload,
+    snapshot: latest.data,
+    predictions: latest.data?.predictions.filter(
+      (prediction) => prediction.divipola === selectedCity,
+    ),
     selectedCity,
     setSelectedCity,
+    refresh: () => latest.refetch(),
   };
 }

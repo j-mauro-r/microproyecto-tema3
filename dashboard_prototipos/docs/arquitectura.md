@@ -297,6 +297,15 @@ Los servicios de consulta no importan `sqlite3`, Champion, adapters u orquestaci
 de inferencia. Por ello Refresh funciona aunque el runtime Champion no esté
 configurado, siempre que la base de `BIOMAC_DB_PATH` exista.
 
+### Integración frontend HU008
+
+El dashboard obtiene server state mediante React Query y
+`HttpDengueRepository`. `VITE_BIOMAC_API_BASE_URL` es la única configuración de
+origen y contiene el base path `/api/v2`. La apertura y Refresh llaman únicamente
+`GET /predictions/latest`. La acción separada `Actualizar datos` envía
+`multipart/form-data` a `POST /monthly-runs` y, tras `COMPLETED`, invalida/refetchea
+`latest`. Errores de Refresh o upload conservan el snapshot previo en memoria.
+
 ## 10. Idempotencia y consistencia
 
 Una carga debe identificarse mediante:
