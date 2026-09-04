@@ -29,8 +29,8 @@ export class BiomacApiError extends Error {
 
 export class HttpDengueRepository implements DengueRepository {
   constructor(
-    private readonly baseUrl: string | (() => string),
-    private readonly transport: typeof fetch = fetch,
+  private readonly baseUrl: string | (() => string),
+  private readonly transport: typeof fetch = (...args) => fetch(...args),
   ) {}
 
   async getLatest(signal?: AbortSignal): Promise<PredictionSnapshot> {

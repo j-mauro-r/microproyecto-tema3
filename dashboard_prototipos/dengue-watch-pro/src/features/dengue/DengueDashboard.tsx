@@ -68,8 +68,23 @@ function Value({ label, value }: { label: string; value: string | number | null 
 export function DengueDashboard() {
   const { latest, history, upload, snapshot, predictions, selectedCity, setSelectedCity, refresh } =
     useDengueDashboard();
+
   const empty =
-    latest.error instanceof BiomacApiError && latest.error.code === "PREDICTION_NOT_FOUND";
+    latest.error instanceof BiomacApiError &&
+    latest.error.code === "PREDICTION_NOT_FOUND";
+
+
+  if (latest.isPending) {
+    return (
+      <main
+        role="status"
+        className="flex min-h-screen items-center justify-center gap-2 text-muted-foreground"
+      >
+        <LoaderCircle className="animate-spin" /> Cargando predicciones…
+      </main>
+    );
+  }
+
 
   if (latest.isPending) {
     return (
