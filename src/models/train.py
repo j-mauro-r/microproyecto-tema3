@@ -219,6 +219,54 @@ def baselines_en_folds(df: pd.DataFrame, horizonte: int) -> dict[str, dict]:
     return salida
 
 
+def _filas_de_prueba(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Filas evaluables de la prueba.
+
+    Se parte por el mes de la fila y no por anio_objetivo, que es lo que usa el
+    resto del modulo, para caer sobre las mismas filas que evaluan los modelos
+    registrados desde scripts/. La diferencia es un mes por municipio.
+    """
+    d = df[(df["anio"] > ANIO_FIN_TRAIN) & df["objetivo"].notna()].copy()
+    d["objetivo"] = d["objetivo"].astype(int)
+    d["es_inicio"] = d["es_inicio"].astype(int)
+    return d
+
+
+def evaluar_en_prueba(df: pd.DataFrame, alpha: float, k: float,
+                      horizonte: int, cols: list[str]) -> dict:
+    """Entrena con la ventana completa de entrenamiento y evalua en la prueba."""
+    train = df[(df["anio"] <= ANIO_FIN_TRAIN) & df["casos_objetivo"].notna()]
+    test = _filas_de_prueba(df)
+
+    modelo = construir_modelo(alpha)
+    modelo.fit(train[cols], train["casos_objetivo"])
+    esperados = modelo.predict(test[cols])
+    pred, score = alerta_desde_conteo(esperados, test["p75_objetivo"].to_numpy(), k)
+
+    return {
+        "y": test["objetivo"].to_numpy(),
+        "pred": pred,
+        "score": score,
+        "inicio": test["es_inicio"].to_numpy(),
+        "por_fold": pd.DataFrame(),
+        "coeficientes": modelo.named_steps["poisson"].coef_,
+    }
+
+
+def baselines_en_prueba(df: pd.DataFrame, horizonte: int) -> dict[str, dict]:
+    """Los mismos baselines, sobre las mismas filas de prueba que los modelos."""
+    test = _filas_de_prueba(df)
+    ini = test["es_inicio"].to_numpy()
+    sc = puntajes(test)
+    return {
+        nombre: {"y": test["objetivo"].to_numpy(), "pred": pred,
+                 "score": sc[nombre], "inicio": ini,
+                 "por_fold": pd.DataFrame()}
+        for nombre, pred in predicciones(test).items()
+    }
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--features", type=Path,
@@ -231,6 +279,9 @@ def main(argv=None) -> int:
     ap.add_argument("--incluir-baselines", action="store_true",
                     help="Registrar tambien los baselines como corridas")
     ap.add_argument("--todos-los-municipios", action="store_true")
+    ap.add_argument("--prueba", action="store_true",
+                    help="Evaluar sobre la prueba en vez de los folds. "
+                         "Se mira una sola vez, al final.")
     args = ap.parse_args(argv)
 
     if not args.features.exists():
@@ -264,15 +315,22 @@ def main(argv=None) -> int:
           f"objetivo {SERIE_OBJETIVO}")
     mlflow.set_experiment(args.experimento)
 
+    conjunto = "prueba" if args.prueba else "folds"
+    sufijo_conjunto = "_prueba" if args.prueba else ""
+    if args.prueba:
+        print("PRUEBA. Se mira una sola vez, al final.")
+
     resumen = {}
 
     if args.incluir_baselines:
         print("\nRegistrando baselines")
-        for nombre, res in baselines_en_folds(df, horizonte).items():
+        fuente = baselines_en_prueba if args.prueba else baselines_en_folds
+        for nombre, res in fuente(df, horizonte).items():
             resumen[nombre] = registrar(
-                nombre,
+                nombre + sufijo_conjunto,
                 {"modelo": "baseline", "regla": nombre, "horizonte": horizonte,
-                 "alcance": alcance, "serie_objetivo": SERIE_OBJETIVO},
+                 "alcance": alcance, "serie_objetivo": SERIE_OBJETIVO,
+                 "conjunto": conjunto},
                 res,
             )
             print(f"  {nombre}")
@@ -280,15 +338,16 @@ def main(argv=None) -> int:
     for alpha in args.alphas:
         for k in args.umbrales:
             sufijo = f"_k{k:g}" if len(args.umbrales) > 1 or k != 1.0 else ""
-            nombre = f"poisson_a{alpha:g}{sufijo}_h{horizonte}"
+            nombre = f"poisson_a{alpha:g}{sufijo}_h{horizonte}{sufijo_conjunto}"
             print(f"\nEntrenando {nombre}")
-            res = evaluar_en_folds(df, alpha, k, horizonte, cols)
+            evaluar = evaluar_en_prueba if args.prueba else evaluar_en_folds
+            res = evaluar(df, alpha, k, horizonte, cols)
             resumen[nombre] = registrar(
                 nombre,
                 {"modelo": "poisson", "alpha": alpha, "umbral_k": k,
                  "horizonte": horizonte, "alcance": alcance,
                  "serie_objetivo": SERIE_OBJETIVO, "n_variables": len(cols),
-                 "ref_inicio": REF_INICIO,
+                 "ref_inicio": REF_INICIO, "conjunto": conjunto,
                  "folds": f"{ANIO_PRIMER_FOLD}-{ANIO_FIN_TRAIN}",
                  "umbral": f"{k:g} x p75 del mes objetivo"},
                 res, cols,
@@ -297,7 +356,7 @@ def main(argv=None) -> int:
                 print(res["por_fold"].to_string(index=False))
 
     print("\n" + "=" * 70)
-    print("RESUMEN, agregado de los folds")
+    print("RESUMEN, prueba" if args.prueba else "RESUMEN, agregado de los folds")
     print(tabla_comparativa(
         {k: {m: v for m, v in r.items() if not m.startswith("ini_")}
          for k, r in resumen.items()}

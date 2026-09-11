@@ -65,9 +65,13 @@ def print_metrics(m, label="Test"):
         print()
 
 
-def make_t2_target(df, target_col="brote"):
-    """Crea target T+2 desplazando brote un mes hacia adelante por municipio.
-    Elimina filas donde el target futuro no esta disponible (ultimo mes por divipola).
+def make_t2_target(df, target_col="objetivo"):
+    """
+    Objetivo de T+2, corriendo un mes mas la etiqueta de T+1.
+
+    es_inicio se recalcula porque la columna del panel marca el inicio a un mes:
+    dejarla como esta deja la etiqueta y el indicador corridos entre si. Un
+    inicio a dos meses es que t+2 este en brote y t+1 no, y t+1 es target_col.
     """
     df = df.copy()
     df["__target_t2"] = (
@@ -77,4 +81,56 @@ def make_t2_target(df, target_col="brote"):
     )
     df = df.dropna(subset=["__target_t2"])
     df["__target_t2"] = df["__target_t2"].astype(int)
+    df["es_inicio"] = (
+        (df["__target_t2"] == 1) & (df[target_col].astype(int) == 0)
+    ).astype(int)
     return df, "__target_t2"
+
+
+CIUDADES = {"68001": "Bucaramanga", "76001": "Cali"}
+
+
+def _sub(a, mask):
+    return None if a is None else np.asarray(a)[mask]
+
+
+def registrar_por_alcance(divipolas, y_true, y_pred, y_ini=None, y_score=None,
+                          imprimir=True):
+    """
+    Registra las metricas en tres alcances con una convencion fija:
+
+        sin prefijo    los dos municipios del alcance
+        nacional_      todos los municipios del panel
+        {divipola}_    cada municipio por separado
+
+    Las que van sin prefijo son las que quedan en la misma columna de MLflow
+    que los baselines, asi que tienen que significar lo mismo en todos los
+    scripts. La tasa base nacional es 39% y la de las dos ciudades 60%.
+
+    Devuelve el dict del alcance del producto.
+    """
+    divipolas = np.asarray(divipolas).astype(str)
+
+    m_nac = full_metrics(y_true, y_pred, y_ini, y_score)
+    log_full_metrics(m_nac, prefix="nacional")
+
+    mask = np.isin(divipolas, list(CIUDADES))
+    m_prod = full_metrics(_sub(y_true, mask), _sub(y_pred, mask),
+                          _sub(y_ini, mask), _sub(y_score, mask))
+    log_full_metrics(m_prod)
+
+    if imprimir:
+        print_metrics(m_nac, "Nacional")
+        print_metrics(m_prod, "Bucaramanga + Cali")
+
+    for div, ciudad in CIUDADES.items():
+        m = divipolas == div
+        if m.sum() < 5:
+            continue
+        m_c = full_metrics(_sub(y_true, m), _sub(y_pred, m),
+                           _sub(y_ini, m), _sub(y_score, m))
+        log_full_metrics(m_c, prefix=div)
+        if imprimir:
+            print_metrics(m_c, f"{ciudad} ({div})")
+
+    return m_prod

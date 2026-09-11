@@ -62,7 +62,7 @@ REF_FIN = 2022
 # que borrar antes de recalcular.
 DERIVADAS = [
     "p25", "p75", "zona_canal", "sir", "es_endemico",
-    "brote", "objetivo", "casos_objetivo", "es_inicio",
+    "brote", "brote_lag_1", "objetivo", "casos_objetivo", "es_inicio",
     "anio_objetivo", "mes_objetivo",
     "p25_objetivo", "p75_objetivo", "zona_objetivo",
 ]
@@ -259,6 +259,11 @@ def aplicar_referencia(
     df = agregar_sir(df, ref)
     df = agregar_endemico(df, ref)
     df = agregar_objetivo(df, horizonte)
+
+    # brote sale de comparar contra el P75, que depende de la ventana de
+    # referencia, asi que su rezago va aqui y no con los demas.
+    df["brote_lag_1"] = df.groupby("divipola")["brote"].shift(1)
+
     return agregar_umbral_objetivo(df, ref)
 
 

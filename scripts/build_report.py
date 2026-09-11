@@ -5,6 +5,7 @@ Uso: python scripts/build_report.py
 import json
 import os
 import pickle
+import sys
 
 import numpy as np
 import pandas as pd
@@ -36,7 +37,9 @@ PROHIBIDAS = {
     "anio", "mes", "casos_grave", "casos_clasico", "es_inicio",
     "objetivo", "casos_objetivo", "anio_objetivo", "mes_objetivo",
 }
-TRAIN_END = 2023
+sys.path.insert(0, os.path.dirname(__file__))
+from model_utils import ANIO_FIN_TRAIN
+TRAIN_END = ANIO_FIN_TRAIN  # 2022, importado de src/evaluation/splits.py
 DIVIPOLAS = {"68001": "Bucaramanga", "76001": "Cali"}
 
 
@@ -402,7 +405,7 @@ def build_s2(doc, meta, results):
 
     add_heading(doc, "2.4 Gestion de experimentos con MLflow", level=2)
     add_body(doc,
-        "Todos los entrenamientos se registran en el experimento 'dengue-brote-clasico' de "
+        "Todos los entrenamientos se registran en el experimento 'sat-dengue' de "
         "MLflow. El servidor está desplegado en una instancia EC2 de AWS, accesible para "
         "todos los integrantes del equipo mediante la variable de entorno MLFLOW_TRACKING_URI. "
         "Para cada corrida se registran hiperparámetros, métricas de validación y prueba, "

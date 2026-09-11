@@ -5,7 +5,7 @@ Prerequisito:
   $env:MLFLOW_TRACKING_URI = "http://<ec2-host>:<puerto>"
   python scripts/register_models_remote.py
 
-El script crea un run por modelo en el experimento 'dengue-brote-clasico',
+El script crea un run por modelo en el experimento 'sat-dengue',
 sube el pkl calibrado como artefacto, registra el modelo en el Model Registry
 y asigna el alias 'champion' al modelo ganador de cada horizonte.
 
@@ -90,7 +90,15 @@ def evaluate(pkg, df, horizonte):
     }
 
     m_global = full_metrics(y_te, pred_te, y_ini, y_score=p_te)
-    metrics.update({f"test_{k}": float(v) for k, v in m_global.items() if isinstance(v, (int, float)) and v == v})
+    metrics.update({f"nacional_{k}": float(v) for k, v in m_global.items() if isinstance(v, (int, float)) and v == v})
+
+    # Sin prefijo van las dos ciudades: es el alcance del producto y la columna
+    # que se compara contra los baselines.
+    mask_ciudades = test["divipola"].astype(str).isin(CITIES).values
+    m_prod = full_metrics(y_te[mask_ciudades], pred_te[mask_ciudades],
+                          y_ini[mask_ciudades] if y_ini is not None else None,
+                          y_score=p_te[mask_ciudades])
+    metrics.update({k: float(v) for k, v in m_prod.items() if isinstance(v, (int, float)) and v == v})
 
     for div, city in CITIES.items():
         mask = (test["divipola"].astype(str) == div).values
@@ -99,7 +107,7 @@ def evaluate(pkg, df, horizonte):
         m_c = full_metrics(y_te[mask], pred_te[mask],
                            y_ini[mask] if y_ini is not None else None,
                            y_score=p_te[mask])
-        metrics.update({f"test_{div}_{k}": float(v) for k, v in m_c.items() if isinstance(v, (int, float)) and v == v})
+        metrics.update({f"{div}_{k}": float(v) for k, v in m_c.items() if isinstance(v, (int, float)) and v == v})
 
     return metrics
 
@@ -136,8 +144,11 @@ def main():
         with mlflow.start_run(run_name=run_name) as run:
             mlflow.log_params({
                 "horizonte":      horizonte,
+                "conjunto":       "prueba",
+                "alcance":        "Bucaramanga, Cali",
+                "serie_objetivo": "casos_clasico",
                 "train_end":      TRAIN_END,
-                "n_features":     len(pkg["features"]),
+                "n_variables":    len(pkg["features"]),
                 "features":       str(pkg["features"]),
                 "calibrated":     pkg.get("calibrated", False),
                 "calib_method":   pkg.get("method", "none"),

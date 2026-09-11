@@ -27,7 +27,7 @@ MODEL_DIR  = os.path.join(ROOT, "model")
 REPORT_DIR = os.path.join(ROOT, "reports")
 
 TARGET    = "objetivo"
-TRAIN_END = ANIO_FIN_TRAIN
+TRAIN_END = ANIO_FIN_TRAIN  # 2022, importado de src/evaluation/splits.py
 CITIES    = {"68001": "Bucaramanga", "76001": "Cali"}
 TOP_N     = 15
 

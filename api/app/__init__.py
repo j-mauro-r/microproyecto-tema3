@@ -1,0 +1,1 @@
+"""BIOMAC FastAPI application."""

@@ -13,8 +13,7 @@ const MONTH_LABELS = [
   "dic.",
 ];
 
-export const formatPercent = (value: number, decimals = 0) =>
-  `${(value * 100).toFixed(decimals)}%`;
+export const formatPercent = (value: number, decimals = 0) => `${(value * 100).toFixed(decimals)}%`;
 
 export const formatMonth = (month: string) => {
   const [y = "", m = ""] = month.split("-");
