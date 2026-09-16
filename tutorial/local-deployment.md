@@ -105,7 +105,7 @@ make delete
 La primera vez que abras el dashboard, vas a ver un mensaje diciendo que no hay datos todavía — **esto es normal**, la aplicación empieza sin información y hay que cargarle el primer archivo:
 
 1. Haz clic en el botón **"Actualizar datos"**.
-2. En "Archivo mensual CSV", selecciona el archivo de ejemplo que ya viene en el proyecto: `runtime/carga_mensual_2025-12.csv`.
+2. En "Archivo mensual CSV", selecciona el archivo de ejemplo que ya viene en el proyecto: `tutorial/carga_mensual_2025-12.csv`.
 3. En "Mes de referencia", elige **diciembre de 2025** (`2025-12`).
 4. Haz clic en **"Confirmar actualización"**.
 5. Espera unos segundos — el dashboard ahora debería mostrar las predicciones para Bucaramanga y Cali.
