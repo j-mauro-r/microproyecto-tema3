@@ -1,0 +1,32 @@
+# Local-only integration test harness for the two Dockerfiles under
+# docker/ -- NOT part of the AWS deployment path (that's infra/terraform/).
+# Run the whole stack with:
+#   docker compose up --build
+# then:
+#   curl http://localhost:8001/api/v2/health
+#   open http://localhost:3000
+#
+# Uses host networking (Linux only) so the dashboard's build-time
+# VITE_BIOMAC_API_BASE_URL can point at the same "localhost:8001" from both
+# the browser and the container's own SSR fetches -- mirroring how both
+# sides hit the same public ALB DNS name once deployed to AWS.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    network_mode: host
+    environment:
+      BIOMAC_ENVIRONMENT: local-compose
+      BIOMAC_CORS_ORIGINS: http://localhost:3000
+
+  dashboard:
+    build:
+      context: dashboard_prototipos/dengue-watch-pro
+      dockerfile: ../../docker/dashboard.Dockerfile
+      args:
+        VITE_BIOMAC_API_BASE_URL: http://localhost:8001/api/v2
+    network_mode: host
+    depends_on:
+      - api
