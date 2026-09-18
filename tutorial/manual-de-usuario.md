@@ -24,6 +24,7 @@ Este manual supone que la instalación local ya terminó y que los servicios est
 
 Si ya existe una actualización completada, se mostrará la vista principal. Si aún no hay predicciones, aparecerá la pantalla **Sin predicciones**, desde la cual puede cargar el primer periodo mensual.
 
+![alt text](image.png)
 [imagen-pantalla-sin-predicciones-con-botones-reintentar-y-actualizar-datos]
 
 ## 3. Descripción general de la interfaz
@@ -40,6 +41,7 @@ La vista principal contiene:
 8. Los paneles **Canal endémico**, **Explicabilidad** y **Calidad de datos**.
 9. El **Historial de predicciones**.
 
+![alt text](image-3.png)
 [imagen-vista-general-del-dashboard-con-las-secciones-principales]
 
 ## 4. Consultar las predicciones por ciudad
@@ -52,6 +54,7 @@ Al abrir el dashboard, **Bucaramanga** está seleccionada de forma predeterminad
 
 El botón activo aparece resaltado. Cambiar de ciudad no procesa datos nuevos: solo muestra la información ya disponible para esa ciudad.
 
+![alt text](image-4.png)
 [imagen-selector-de-ciudad-bucaramanga-y-cali]
 
 Si aparece **No hay predicciones persistidas para esta ciudad**, la última actualización no contiene resultados para la ciudad seleccionada.
@@ -66,6 +69,7 @@ Por ejemplo, para un corte de diciembre de 2025, T+1 corresponde a enero de 2026
 
 Cada horizonte tiene su propia probabilidad, su propio resultado y su propio threshold. Deben interpretarse por separado.
 
+![alt text](image-6.png)
 [imagen-predicciones-t1-y-t2-con-probabilidad-y-threshold]
 
 ## 6. Interpretar los resultados de una predicción
@@ -107,23 +111,10 @@ El panel **Metadata y trazabilidad** presenta:
 
 El mismo Run aparece junto a la fecha de actualización. Úselo para distinguir una ejecución de otra cuando reporte un problema o compare el historial.
 
+![alt text](image-7.png)
 [imagen-encabezado-y-panel-de-metadata-con-champion-version-y-run]
 
-## 8. Actualizar la vista
-
-Use **Actualizar vista** para volver a consultar la última predicción completada.
-
-1. Seleccione **Actualizar vista**.
-2. Mientras se realiza la consulta, el botón muestra **Actualizando…**.
-3. Al terminar, revise el corte, la fecha y el Run mostrados.
-
-Esta acción no carga archivos ni genera un procesamiento mensual.
-
-Si la consulta falla y ya había una predicción visible, el dashboard conserva esa última predicción y muestra el aviso **No se pudo actualizar la vista. Se conserva la última predicción válida.** Puede seleccionar **Reintentar**.
-
-[imagen-aviso-de-error-al-actualizar-con-ultima-prediccion-conservada]
-
-## 9. Actualizar los datos mensuales
+## 8. Actualizar los datos mensuales
 
 Use **Actualizar datos** para enviar un archivo mensual a validación y procesamiento.
 
@@ -152,6 +143,7 @@ No cambie nombres de columnas ni agregue municipios. Si prepara un archivo propi
 4. En **Mes de referencia**, elija diciembre de 2025.
 5. Seleccione **Confirmar actualización**.
 
+![alt text](image-8.png)
 [imagen-modal-actualizar-periodo-mensual-con-archivo-y-mes-de-referencia]
 
 El mes de referencia describe el periodo contenido en las filas del archivo. No es el mes T+1 ni el mes T+2.
@@ -165,27 +157,13 @@ Después de seleccionar **Confirmar actualización**, el navegador pregunta:
 - Acepte para iniciar el procesamiento.
 - Cancele para volver a la ventana sin enviar el archivo.
 
-Mientras se procesa, el botón muestra **Procesando…** y permanece deshabilitado.
-
 Cuando termina correctamente, aparece **Actualización completada**, seguida del Run, el mes de referencia y el estado **COMPLETED**. La ventana permanece abierta y el dashboard vuelve a consultar la última predicción y el historial.
 
+![alt text](image-9.png)
 [imagen-confirmacion-de-actualizacion-completada-con-run-mes-y-estado]
 
-## 10. Calidad de datos
 
-El panel **Calidad de datos** muestra:
-
-- **Estado**: resultado general de la validación registrada para la actualización.
-- **Último mes observado**: periodo de los datos procesados.
-- avisos adicionales: precisiones o limitaciones que deben considerarse al leer el resultado.
-
-En el flujo local vigente, el estado puede mostrarse como `complete` cuando las 39 variables requeridas superan la validación. Aun así, puede aparecer un aviso indicando que la completitud separada de los grupos epidemiológico y climático no está calculada. Un aviso no debe ocultarse ni interpretarse como un dato adicional.
-
-Si la actualización no contiene información de calidad, aparece **Información de calidad no disponible**.
-
-[imagen-panel-calidad-de-datos-con-estado-mes-y-aviso]
-
-## 11. Canal endémico
+## 9. Canal endémico
 
 El panel **Canal endémico** corresponde a la ciudad seleccionada y puede mostrar:
 
@@ -199,17 +177,10 @@ La interfaz muestra el valor de **Zona** tal como fue recibido y no incluye una 
 
 Si no existe contexto para la ciudad, aparece **Información de contexto no disponible**.
 
+![alt text](image-10.png)
 [imagen-panel-canal-endemico-de-la-ciudad-seleccionada]
 
-## 12. Explicabilidad
-
-Debajo de cada predicción puede aparecer una explicación local con las variables que más contribuyeron al resultado. Una contribución positiva impulsa el resultado del modelo en sentido positivo y una negativa en sentido contrario; no demuestra causalidad.
-
-El panel **Explicabilidad** recuerda esta limitación. En la configuración local vigente no se cargan artefactos de explicación, por lo que normalmente se muestra **Explicación local no disponible para esta predicción.**
-
-[imagen-mensaje-de-explicacion-local-no-disponible-en-una-prediccion]
-
-## 13. Historial de predicciones
+## 10. Historial de predicciones
 
 El panel **Historial de predicciones** lista hasta 12 actualizaciones completadas. Cada línea muestra:
 
@@ -220,9 +191,10 @@ La lista sirve para comprobar qué procesamientos quedaron registrados. Los elem
 
 Si no hay registros disponibles, aparece **No hay historial de predicciones disponible**.
 
+![alt text](image-11.png)
 [imagen-historial-de-predicciones-con-mes-y-run]
 
-## 14. Mensajes y errores frecuentes
+## 12. Mensajes y errores frecuentes
 
 ### No fue posible conectar con BIOMAC API
 
@@ -255,28 +227,3 @@ El año o el mes de una fila no coincide con **Mes de referencia**. Corrija el a
 ### El archivo debe contener exactamente Bucaramanga y Cali
 
 Falta una de las ciudades, hay una ciudad adicional o hay más de dos filas. Incluya una sola fila con `68001` y una sola fila con `76001`.
-
-### Las features requeridas deben ser numéricas, finitas y no nulas
-
-Una o más variables contienen texto, un valor vacío o un número no válido. Corrija las columnas indicadas por el mensaje y vuelva a intentarlo.
-
-### El contexto no corresponde al provider Champion configurado
-
-El periodo seleccionado no coincide con el artefacto Champion disponible en el entorno local actual. Use el archivo incluido para diciembre de 2025 con el mes `2025-12`.
-
-### BIOMAC API no pudo completar la solicitud / Ocurrió un error interno inesperado
-
-El procesamiento no terminó. La última predicción válida se conserva. Puede usar **Reintentar** en la ventana; si vuelve a fallar, conserve el Run visible y solicite apoyo a la persona responsable de la instalación.
-
-## 15. Buenas prácticas de uso
-
-- Confirme siempre la ciudad, el corte y el mes objetivo antes de interpretar una alerta.
-- Lea T+1 y T+2 por separado; sus probabilidades y thresholds pueden ser distintos.
-- Compare la probabilidad con el threshold del mismo horizonte.
-- No interprete **No disponible** como cero.
-- Use el CSV de ejemplo como plantilla y no modifique sus encabezados.
-- Verifique que el mes elegido coincida con el año y el mes de todas las filas.
-- Espere el mensaje **Actualización completada** antes de cerrar la ventana.
-- Anote el Run cuando necesite comunicar o revisar un resultado.
-- Considere los avisos de calidad y las limitaciones de explicabilidad.
-- Use las predicciones como apoyo para la toma de decisiones, junto con el análisis epidemiológico correspondiente.
