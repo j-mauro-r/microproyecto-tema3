@@ -1,0 +1,8 @@
+# Slim, deploy-time dependency set for the FastAPI service.
+# The root requirements.txt also includes training/report-only packages
+# (pandas, xgboost, mlflow-skinny, matplotlib, ...) that api/app never
+# imports at runtime -- see api/tests/test_imports.py.
+fastapi>=0.115,<1
+uvicorn>=0.30,<1
+python-multipart>=0.0.9,<1
+pyarrow==25.0.1
