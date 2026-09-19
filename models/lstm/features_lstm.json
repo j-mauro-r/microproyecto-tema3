@@ -1,0 +1,13 @@
+[
+  "rain_mm_day",
+  "temp_mean_c",
+  "dewpoint_mean_c",
+  "soil_water_l1_mean",
+  "surface_runoff_mm_day",
+  "total_evaporation_mm_day_ecmwf",
+  "solar_radiation_mj_m2_day",
+  "wind_speed_mean_ms",
+  "day_of_year_sin",
+  "day_of_year_cos",
+  "casos_dengue"
+]

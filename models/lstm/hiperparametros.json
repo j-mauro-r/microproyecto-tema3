@@ -1,0 +1,20 @@
+{
+  "lookback": 28,
+  "horizon": 21,
+  "n_municipios": 1123,
+  "batch_size": 1024,
+  "hiperparametros": {
+    "lstm_units": 64,
+    "dropout_lstm": 0.1,
+    "embedding_dim": 16,
+    "dense_1": 128,
+    "dense_2": 32,
+    "dropout_dense": 0.2,
+    "learning_rate": 0.003535899417427714,
+    "tuner/epochs": 2,
+    "tuner/initial_epoch": 0,
+    "tuner/bracket": 2,
+    "tuner/round": 0
+  },
+  "mlflow_run_id": "88ed0f4bf80f497496360bab3fadce26"
+}
