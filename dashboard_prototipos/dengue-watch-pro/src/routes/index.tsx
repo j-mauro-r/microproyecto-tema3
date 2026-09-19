@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { DengueDashboard } from "@/features/dengue/DengueDashboard";
 
-const title = "BIOMAC — Alerta temprana de dengue grave";
+const title = "BIOMAC — Sistema de alerta temprana de dengue";
 const description =
-  "Dashboard de alerta temprana de exceso de casos de dengue grave en Bucaramanga y Cali, con horizonte de 1 a 2 meses.";
+  "Dashboard de alerta temprana de dengue en Bucaramanga y Cali, con horizonte de 1 a 2 meses.";
 
 export const Route = createFileRoute("/")({
   head: () => ({

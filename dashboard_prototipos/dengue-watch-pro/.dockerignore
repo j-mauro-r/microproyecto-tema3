@@ -1,0 +1,10 @@
+node_modules
+.git
+.output
+.nitro
+.tanstack
+coverage
+*.log
+.env.local
+.vscode
+dist

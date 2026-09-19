@@ -9,6 +9,18 @@ data/raw/dengue_grave.csv
 data/raw/google_earth_engine.csv
 data/processed/bulk_processing.py
 
+# MLflow local tracking
+mlruns/
+mlruns.db
+mlflow.db
+
+# Archivos procesados grandes (generados localmente)
+data/processed/sivigila_*.csv
+data/processed/gee_*.csv
+data/figures/
+scripts/build_report.py
+scripts/rewrite_notebooks.py
+scripts/build_conclusiones.py
 # Salidas del pipeline. Se versionan con DVC, no con git.
 data/processed/*.parquet
 
@@ -21,3 +33,22 @@ __pycache__/
 *.key
 
 mlruns/
+
+# BIOMAC local runtime artifacts
+/runtime/
+
+# BIOMAC local runtime databases
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+*.sqlite-wal
+*.sqlite-shm
+.DS_Store
+**/.DS_Store
+
+# Prototipos y documentación local no versionada
+/dashboard_prototipos/docs/
+/dashboard_prototipos/dengue_dashboard.html
+/dashboard_prototipos/JSON-dashboard.md

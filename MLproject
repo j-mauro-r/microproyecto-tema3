@@ -1,0 +1,32 @@
+name: sat-dengue
+
+python_env: python_env.yaml
+
+entry_points:
+  build_panel:
+    command: "python src/data/build_panel.py"
+
+  build_features:
+    command: "python src/features/build_features.py"
+
+  train_xgboost:
+    command: "python scripts/train_clasico_model.py"
+
+  train_logistic:
+    command: "python scripts/train_logistic.py"
+
+  train_gam:
+    command: "python scripts/train_gam.py"
+
+  train_rf:
+    command: "python scripts/train_rf.py"
+
+  train_lgbm:
+    command: "python scripts/train_lgbm.py"
+
+  dashboard:
+    parameters:
+      host: {type: string, default: "0.0.0.0"}
+      port: {type: float, default: 8050}
+    command: >
+      python dashboard/app.py

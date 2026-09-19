@@ -1,12 +1,12 @@
-# Dengue Alert Dashboard
+# BIOMAC — Sistema de alerta temprana de dengue
 
-Construye en Lovable el FRONTEND del prototipo BIOMAC — Sistema de Alerta Temprana de Dengue Grave.
+Dashboard BIOMAC conectado a FastAPI `/api/v2`, sin fallback productivo a mocks.
 
 OBJETIVO
 
 Crear un dashboard que permita responder:
 
-“¿Existe riesgo de que se presente un exceso de casos de dengue grave en Bucaramanga y Cali dentro de los próximos dos meses, de manera que se puedan tomar oportunamente medidas preventivas y de preparación del sistema de salud?”
+“¿Existe riesgo de un exceso de casos de dengue en Bucaramanga y Cali dentro de los próximos dos meses, de manera que se puedan tomar oportunamente medidas preventivas y de preparación del sistema de salud?”
 
 ALCANCE
 
@@ -24,7 +24,8 @@ ALCANCE
 
 - Mostrar además la probabilidad asociada.
 
-- Por ahora usar datos mock desacoplados. No implementar backend.
+- Metadata, calidad, contexto, explicabilidad e historial se muestran únicamente
+  cuando llegan desde snapshots persistidos reales.
 
 DASHBOARD
 
@@ -156,3 +157,13 @@ cd <repository-name>
 npm i
 npm run dev
 ```
+
+Copy `.env.example` to `.env.local` and configure the public API base URL:
+
+```sh
+VITE_BIOMAC_API_BASE_URL=http://127.0.0.1:8001/api/v2
+```
+
+The value must include `/api/v2` and must not end in a slash. The dashboard uses
+FastAPI as its normal data source; the mock repository is available only for
+explicit tests and is never an automatic fallback.

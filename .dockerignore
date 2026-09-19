@@ -1,0 +1,29 @@
+# Applies to the API's build context (repo root):
+#   docker build -f docker/api.Dockerfile .
+# Keeps large/irrelevant training-time and dev-time content out of the
+# image build context entirely.
+
+.venv/
+data/
+mlruns/
+mlruns.db
+mlflow.db
+models/
+model/
+notebooks/
+reports/
+dashboard_prototipos/
+docker/
+.git/
+.dvc/
+runtime/
+infra/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.docx
+*.db
+*.sqlite*
+*.sqlite3
+.env
+dev.md
